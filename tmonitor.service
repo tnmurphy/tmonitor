@@ -1,0 +1,13 @@
+[Unit]
+Description=Temperature monitoring and logging
+Requires=network.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/src/monitor/
+ExecStart=/usr/bin/python3 ./pv run startup.py
+
+[Install]
+WantedBy=multi-user.target
+Alias=tmonitor
+
