@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+
+import toml
+import venv
+import sys
+import os
+import subprocess
+
+tomlfile = "pyproject.toml"
+
+class Project:
+    def __init__(self, filename="pyproject.toml", venv_dir=".venv"):
+        self.tomlfile = filename
+        with open(tomlfile, "r") as tf:
+            proj = toml.load(tf)['project']
+        self.dependencies = proj['dependencies']
+        self.name = proj['name']
+        self.venv_dir = venv_dir
+
+    def venv(self):
+        builder = venv.EnvBuilder(with_pip=True)
+        builder.create(self.venv_dir)
+
+    def install_dependencies(self):
+        tmp_requirements = "requirements.txt"
+        with open(tmp_requirements,"w") as rq:
+            for d in self.dependencies:
+                rq.write(f"{d}\n")
+        print("pip: installing dependencies")
+        subprocess.call(f"set -x;. {self.venv_dir}/bin/activate; pip install -r {tmp_requirements}", shell=True)
+
+    def whole_environment(self):
+        if not os.path.exists(self.venv_dir):
+            self.venv()
+            self.install_dependencies()
+
+    def run(self, script_name: str):
+        self.whole_environment()
+        print("running: {script_name}")
+        subprocess.call(f"set -x;. {self.venv_dir}/bin/activate; python3 {script_name}", shell=True)
+
+if __name__ == '__main__':
+    print(f"installing requirements")
+    p = Project()
+    print(f"project: {p.name}")
+    commandline = sys.argv
+
+    if commandline[1] == "run": 
+        p.run(commandline[2])
+    elif commandline[1] == "venv":
+        p.whole_environment()
+
+
+
+
+
+
