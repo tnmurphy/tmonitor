@@ -2,3 +2,4 @@ __pycache__
 *.pyc
 monitor.db
 uv.lock
+pico/secrets.py
