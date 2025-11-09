@@ -4,9 +4,4 @@ version = "0.1.0"
 description = "record temperature and other sensor readings"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = [
-    "fastapi>=0.121.0",
-    "requests>=2.32.5",
-    "sqlmodel>=0.0.27",
-    "uvicorn>=0.38.0",
-]
+dependencies = [ "fastapi>=0.121.0", "requests>=2.32.5", "sqlmodel>=0.0.27", "uvicorn>=0.38.0", "httpx",]

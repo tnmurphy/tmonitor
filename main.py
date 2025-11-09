@@ -39,6 +39,7 @@ import time
 from typing import List
 import logger
 import traceback
+import database
 
 
 app = FastAPI()
@@ -91,7 +92,12 @@ def sensor_event(request: Request, readings: List[SensorReadingPayload]):
             r = SensorReading.from_payload(reading)
             session.add(r)
         session.commit()
-    s = {"message": "OK", "current_timestamp": int(time.time())}
+    response = {
+        "id": request.state.correlator,
+        "description": "ok",
+        "description_key": "ok",
+        "current_timestamp": int(time.time())
+    }
     return JSONResponse(s, status_code=200)
 
 

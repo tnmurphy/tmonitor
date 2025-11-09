@@ -31,13 +31,18 @@ SOFTWARE.
 from sqlmodel import create_engine, SQLModel
 from sensor_reading import SensorReading
 
-dburl = "sqlite:///monitor.db"
+production_db = "sqlite:///monitor.db"
+test_db = "sqlite:///test_monitor.db"
+
+def new_test_database(app):
+    app.state.engine = create_engine(test_db)
+    SQLModel.metadata.create_all(app.state.engine)
 
 def add_engine_to_app(app):
     app.state.engine = create_engine(dburl)
 
-def make_database():
-    engine = create_engine(dburl)
+def make_database(url=production_db):
+    engine = create_engine(url)
     SQLModel.metadata.create_all(engine)
 
 if __name__ == "__main__":

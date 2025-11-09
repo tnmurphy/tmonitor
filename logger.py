@@ -24,17 +24,17 @@ class RequestLogger:
             self.correlator = generate_correlation_id()
 
     def debug(self, message):
-        self.logger.debug(f"{message}", extra={"correlator": self.correlator})
+        self.logger.debug(message, extra={"correlator": self.correlator})
 
     def info(self, message):
-        self.logger.info(f"{message}", extra={"correlator": self.correlator})
+        self.logger.info(message, extra={"correlator": self.correlator})
 
     def exception(self, message):
         trace_str = traceback.format_exc().replace("\n", "\\n")
         self.logger.error(f"{message}: {trace_str}", extra={"correlator": self.correlator})
 
     def critical(self, message):
-        self.logger.critical(f"{message}", extra={"correlator": self.correlator})
+        self.logger.critical(message, extra={"correlator": self.correlator})
 
 if __name__=="__main__":
     r = RequestLogger()

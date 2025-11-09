@@ -44,8 +44,26 @@ import venv
 import sys
 import os
 import subprocess
+import re
+
+dep_parse_re = re.compile("^([^=<> ]+)([=<> ]+.*)?$")
+
+def strip_dep(dep: str):
+    dm = dep_parse_re.match(dep)
+    if dm:
+        stripped_dep = dm.groups()[0]
+    else: # ??? well, add the unsplit one in hope
+        stripped_dep = dep
+    return stripped_dep
+
+def strip_deps(deps: list[str]):
+    return [strip_dep(d) for d in deps]
+
+            
+
 
 class Project:
+
     def __init__(self, filename="pyproject.toml", venv_dir=".venv"):
         self.tomlfile = filename
         self.venv_dir = venv_dir
@@ -92,20 +110,34 @@ class Project:
             executable="/bin/bash"
         )
 
-    def add_dependency(self, dep: str):
+    def add_dependencies(self, newdeps: list[str]):
+        """ adds a new dependency. wont' do anything if the dependency is already there
+            even if it's an older version.
+        """
+
         with open(self.tomlfile, "r") as f:
             data = toml.load(f)
-        if dep not in data['project']['dependencies']:
-            data['project']['dependencies'].append(dep)
-            with open(self.tomlfile, "w") as f:
-                toml.dump(data, f)
-            print(f"Added {dep} to {self.tomlfile}")
-        else:
-            print(f"{dep} is already in {self.tomlfile}")
+
+        existing_deps = data['project']['dependencies']
+        stripped_existing_deps = set(strip_deps(existing_deps))
+        stripped_newdeps = strip_deps(newdeps)
+
+        new_deps = []
+        for nd in newdeps:
+            snd = strip_dep(nd)
+            if not snd in stripped_existing_deps:
+                new_deps.append(nd)
+            else:
+                print(f"{snd} is already in {self.tomlfile}")
+                return
+        existing_deps.extend(new_deps)                
+        with open(self.tomlfile, "w") as f:
+            toml.dump(data, f)
+        print(f"Added {new_deps} to {self.tomlfile}")
 
 def main():
     parser = argparse.ArgumentParser(description="Manage your Python project.")
-    parser.add_argument("command", choices=["run", "venv", "add-dep"], help="Command to execute")
+    parser.add_argument("command", choices=["run", "venv", "add"], help="Command to execute")
     parser.add_argument("args", nargs="*", help="additional arguments")
     args = parser.parse_args()
 
@@ -119,11 +151,11 @@ def main():
         p.run(args.args)
     elif args.command == "venv":
         p.whole_environment()
-    elif args.command == "add-dep":
+    elif args.command == "add":
         if not args.args:
             print("Error: Please specify a dependency to add.")
             sys.exit(1)
-        p.add_dependency(args.target)
+        p.add_dependencies(args.args)
 
 if __name__ == '__main__':
     main()
