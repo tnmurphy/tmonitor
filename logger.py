@@ -3,17 +3,11 @@ import logging
 import traceback
 from random import randint
 
-LOGGING_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
 logger = logging.getLogger()
 if logger.handlers:
     for handler in logger.handlers:
         logger.removeHandler(handler)
-
-logging.basicConfig(
-    format="[%(filename)20s - %(funcName)25s - Line: %(lineno)4s] %(correlator)s %(levelname)s - %(message)s",
-    level=LOGGING_LEVEL,
-)
 
 def generate_correlation_id():
     """
@@ -25,7 +19,11 @@ def generate_correlation_id():
 
 class RequestLogger:
     def __init__(self, correlator: str = None):
-        self.logger = logging.getLogger()
+        self.logger = logging.getLogger("tmonitor_logger")
+        handler = logging.StreamHandler()
+        handler.Formatter="[%(filename)20s - %(funcName)25s - Line: %(lineno)4s] %(correlator)s %(levelname)s - %(message)s"
+        self.logger.setLevel(os.getenv("TMONITOR_LOG_LEVEL", "INFO"))
+        self.logger.addHandler(handler)
         if correlator:
             self.correlator = correlator
         else:

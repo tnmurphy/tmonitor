@@ -82,11 +82,12 @@ class Project:
             self.venv()
             self.install_dependencies()
 
-    def run(self, script_name: str):
+    def run(self, args: str):
         self.whole_environment()
-        print(f"running: {script_name}")
+        args_str = " ".join(args)
+        print(f"running: {args_str}")
         subprocess.call(
-            f"set -x; . {self.venv_dir}/bin/activate; python3 {script_name}",
+            f"set -x; . {self.venv_dir}/bin/activate; python3 {args_str}",
             shell=True,
             executable="/bin/bash"
         )
@@ -105,21 +106,21 @@ class Project:
 def main():
     parser = argparse.ArgumentParser(description="Manage your Python project.")
     parser.add_argument("command", choices=["run", "venv", "add-dep"], help="Command to execute")
-    parser.add_argument("target", nargs="?", help="Target script or dependency")
+    parser.add_argument("args", nargs="*", help="additional arguments")
     args = parser.parse_args()
 
     p = Project()
     print(f"Project: {p.name}")
 
     if args.command == "run":
-        if not args.target:
+        if not args.args:
             print("Error: Please specify a script to run.")
             sys.exit(1)
-        p.run(args.target)
+        p.run(args.args)
     elif args.command == "venv":
         p.whole_environment()
     elif args.command == "add-dep":
-        if not args.target:
+        if not args.args:
             print("Error: Please specify a dependency to add.")
             sys.exit(1)
         p.add_dependency(args.target)
