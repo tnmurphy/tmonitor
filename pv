@@ -1,21 +1,65 @@
 #!/usr/bin/env python3
+"""
+  A small utility that does some of the things that the Rust uv utility does
+  but in native python. In my case on raspberry pi I cannot get cargo to 
+  install uv. It goes in the project root. 
 
+  It's more useful for running things than for development. One can develop
+  on a pc/laptop with the fancy tools and then deploy on an embedded computer
+  with this.
+
+  It obviously restricts the dependencies to just python which is useful
+  on smaller devices. 
+
+  It's VERY limited now but what the heck! 
+
+  ----------
+
+  Copyright (c) 2025 Timothy Norman Murphy <tnmurphy@gmail.com>
+
+  Permission is hereby granted, free of charge, to any person
+  obtaining a copy of this software and associated documentation files
+  (the “Software”), to deal in the Software without restriction,
+  including without limitation the rights to use, copy, modify, merge,
+  publish, distribute, sublicense, and/or sell copies of the Software,
+  and to permit persons to whom the Software is furnished to do so,
+  subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included
+  in all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND,
+  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+  NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+  DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+  OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR
+  THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+"""
+import argparse
 import toml
 import venv
 import sys
 import os
 import subprocess
 
-tomlfile = "pyproject.toml"
-
 class Project:
     def __init__(self, filename="pyproject.toml", venv_dir=".venv"):
         self.tomlfile = filename
-        with open(tomlfile, "r") as tf:
-            proj = toml.load(tf)['project']
-        self.dependencies = proj['dependencies']
-        self.name = proj['name']
         self.venv_dir = venv_dir
+        try:
+            with open(filename, "r") as tf:
+                proj = toml.load(tf)['project']
+            self.dependencies = proj['dependencies']
+            self.name = proj['name']
+        except FileNotFoundError:
+            print(f"Error: {filename} not found.")
+            sys.exit(1)
+        except KeyError as e:
+            print(f"Error: Missing required key in {filename}: {e}")
+            sys.exit(1)
 
     def venv(self):
         builder = venv.EnvBuilder(with_pip=True)
@@ -23,11 +67,15 @@ class Project:
 
     def install_dependencies(self):
         tmp_requirements = "requirements.txt"
-        with open(tmp_requirements,"w") as rq:
+        with open(tmp_requirements, "w") as rq:
             for d in self.dependencies:
                 rq.write(f"{d}\n")
         print("pip: installing dependencies")
-        subprocess.call(f"set -x;. {self.venv_dir}/bin/activate; pip install -r {tmp_requirements}", shell=True)
+        subprocess.call(
+            f"set -x; . {self.venv_dir}/bin/activate; pip install -r {tmp_requirements}",
+            shell=True,
+            executable="/bin/bash"
+        )
 
     def whole_environment(self):
         if not os.path.exists(self.venv_dir):
@@ -36,22 +84,46 @@ class Project:
 
     def run(self, script_name: str):
         self.whole_environment()
-        print("running: {script_name}")
-        subprocess.call(f"set -x;. {self.venv_dir}/bin/activate; python3 {script_name}", shell=True)
+        print(f"running: {script_name}")
+        subprocess.call(
+            f"set -x; . {self.venv_dir}/bin/activate; python3 {script_name}",
+            shell=True,
+            executable="/bin/bash"
+        )
+
+    def add_dependency(self, dep: str):
+        with open(self.tomlfile, "r") as f:
+            data = toml.load(f)
+        if dep not in data['project']['dependencies']:
+            data['project']['dependencies'].append(dep)
+            with open(self.tomlfile, "w") as f:
+                toml.dump(data, f)
+            print(f"Added {dep} to {self.tomlfile}")
+        else:
+            print(f"{dep} is already in {self.tomlfile}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Manage your Python project.")
+    parser.add_argument("command", choices=["run", "venv", "add-dep"], help="Command to execute")
+    parser.add_argument("target", nargs="?", help="Target script or dependency")
+    args = parser.parse_args()
+
+    p = Project()
+    print(f"Project: {p.name}")
+
+    if args.command == "run":
+        if not args.target:
+            print("Error: Please specify a script to run.")
+            sys.exit(1)
+        p.run(args.target)
+    elif args.command == "venv":
+        p.whole_environment()
+    elif args.command == "add-dep":
+        if not args.target:
+            print("Error: Please specify a dependency to add.")
+            sys.exit(1)
+        p.add_dependency(args.target)
 
 if __name__ == '__main__':
-    print(f"installing requirements")
-    p = Project()
-    print(f"project: {p.name}")
-    commandline = sys.argv
-
-    if commandline[1] == "run": 
-        p.run(commandline[2])
-    elif commandline[1] == "venv":
-        p.whole_environment()
-
-
-
-
-
+    main()
 

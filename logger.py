@@ -1,0 +1,54 @@
+import os
+import logging
+import traceback
+from random import randint
+
+LOGGING_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+logger = logging.getLogger()
+if logger.handlers:
+    for handler in logger.handlers:
+        logger.removeHandler(handler)
+
+logging.basicConfig(
+    format="[%(filename)20s - %(funcName)25s - Line: %(lineno)4s] %(correlator)s %(levelname)s - %(message)s",
+    level=LOGGING_LEVEL,
+)
+
+def generate_correlation_id():
+    """
+    A random correlation id
+    """
+    random_numbers = [str(randint(100, 999)) for i in range(4)]
+    correlation_id = "_".join(random_numbers)
+    return correlation_id
+
+class RequestLogger:
+    def __init__(self, correlator: str = None):
+        self.logger = logging.getLogger()
+        if correlator:
+            self.correlator = correlator
+        else:
+            self.correlator = generate_correlation_id()
+
+    def debug(self, message):
+        self.logger.debug(f"{message}", extra={"correlator": self.correlator})
+
+
+    def info(self, message):
+        self.logger.info(f"{message}", extra={"correlator": self.correlator})
+
+
+    def exception(self, message):
+        trace_str = traceback.format_exc().replace("\n", "\\n")
+        logger.error(f"{message}: {trace_str}", extra={"correlator": self.correlator})
+
+    def critical(self, message):
+        logger.critical(f"{message}", extra={"correlator": self.correlator})
+
+if __name__=="__main__":
+    r = RequestLogger()
+
+    r.debug("some debugging messge")
+    r.info("an info message")
+    r.critical("A critical error")

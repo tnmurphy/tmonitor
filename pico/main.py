@@ -14,8 +14,9 @@ import network
 from picozero import pico_temp_sensor, pico_led
 import uasyncio
 import urequests as requests
-from utime import sleep
 import re
+import secrets
+import base64
 
 lut_full_update = [
     0x80,
@@ -249,15 +250,8 @@ class EPD_2in13(framebuf.FrameBuffer):
         self.digital_write(self.cs_pin, 1)
 
     def ReadBusy(self):
-        # print('busy')
-        # self.led.on()
         while self.digital_read(self.busy_pin) == 1:  # 0: idle, 1: busy
-            self.delay_ms(20)
-            # self.led.off()
-            self.delay_ms(20)
-            # self.led.on()
-        # print('busy release')
-        # self.led.off()
+            self.delay_ms(10)
 
     def TurnOnDisplay(self):
         self.send_command(0x22)
@@ -470,10 +464,12 @@ class TempStats:
     @classmethod
     def show_temp(cls, epd):
         epd.delay_ms(100)
-
+        epd.Clear(0xff)
         xpos = 2
         ypos = 10
         epd.fill(0xFF)
+        
+        #epd.delay_ms(100)
         text = [
             f"Temp: {cls.last_t.value:.4} *C",
             f" on {cls.last_t.date_string}",
@@ -493,7 +489,7 @@ class TempStats:
             ypos += 20
         # print("{:.4} Deg.C".format(t))
         epd.display(epd.buffer)
-        epd.delay_ms(100)
+        epd.delay_ms(1000)
 
 
 def read_battery_level():
@@ -509,7 +505,7 @@ async def connect(wlan):
     wlan.connect(secrets.wifi_ssid, secrets.wifi_password)
     while not wlan.isconnected():
         await uasyncio.sleep_ms(500)
-        print(f"wlan status: {wlan.status()}")
+        #print(f"wlan status: {wlan.status()}")
     ip = wlan.ifconfig()[0]
     return ip
 
@@ -518,39 +514,50 @@ def disconnect(wlan):
     wlan.disconnect()
     wlan.active(False)
 
-
-async def monitor(epd, period_ms: int):
-    print("monitor: started")
+async def show_temp(led: Pin, period_ms: int):
+    print("show_temp: started")
+    epd = EPD_2in13()
+    epd.init(epd.full_update)
+    epd.Clear(0xff)
+    epd.display(epd.buffer)
+    blink(led, 2) # temperature shower initialised
+    
     while True:
-        battery_level = read_battery_level()
-        print(f"monitor: battery_level={battery_level}")
-        print("monitor: showing_temp on display\n")
-        TempStats.check_temp()
+        print("show_temp: displaying\n")
         TempStats.show_temp(epd)
-        print(f"monitor: sleeping {period_ms}ms\n")
         await uasyncio.sleep_ms(period_ms)
 
 
-BASE_URL = "http://chivero:5000"
+async def monitor(period_ms: int):
+    print("monitor: started")
+    while True:
+        print("monitor: measuring temperature\n")
+        TempStats.check_temp()
+        await uasyncio.sleep_ms(period_ms)
 
 
-async def uploader(wlan, led: Pin, post_period: int):
+async def uploader(led: Pin, post_period: int):
     print("uploader: started")
-    time_re = re.compile('"current_timestamp" *: *([0-9]+)', re.I) 
+    wlan = network.WLAN(network.STA_IF)
+    time_re = re.compile('"current_timestamp" *: *([0-9]+)')
+    machine_id = base64.urlsafe_b64encode(machine.unique_id()).decode("utf-8")[:-1]
+    print(f"Machine ID: {machine_id}")
     rtc = RTC()
     
     while True:
         if not TempStats.last_uploaded:
             try:
                 ip = await connect(wlan)
+                blink(led) # network connection
                 print(f"Connected to lan as {ip=}")
-                rj = """{
+
+                rj = """[{
                 "sensor": "%s",
                 "unit": "C",
                 "value": %f,
                 "recorded_timestamp": %d
-                 }""" % (
-                    str(machine.unique_id)+"_temp",
+                 }]""" % (
+                    machine_id +"_temp",
                     TempStats.last_t.value,
                     int(TempStats.last_t.time_secs),
                 )
@@ -559,7 +566,7 @@ async def uploader(wlan, led: Pin, post_period: int):
                 print(f"uploader: response: {response.status_code}")
                 if response.status_code == 200:
                     TempStats.last_uploaded = True
-                    if m := re.match(response.text):
+                    if m := time_re.match(response.text):
                         # Set the local clock to match the remote one.
                         temperature_secs = int(m.groups()[1])
                         dt = datetime.fromtimestamp(temperature_secs)
@@ -569,7 +576,7 @@ async def uploader(wlan, led: Pin, post_period: int):
                 print("uploader: disconnecting")
                 disconnect(wlan)
             except Exception as e:
-                print(f"Exception in uploader: {e}")
+                print(f"Exception in uploader: {type(e)} {str(e)}")
                 if type(e) == SyntaxError:
                     raise e
         else:
@@ -578,7 +585,7 @@ async def uploader(wlan, led: Pin, post_period: int):
         await uasyncio.sleep_ms(post_period)
 
 
-async def main(led: Pin, wlan, epd, debug: bool):
+async def main(led: Pin, debug: bool):
     if debug:
         monitor_period = 20 * 1000
         upload_period = 30 * 1000
@@ -586,8 +593,9 @@ async def main(led: Pin, wlan, epd, debug: bool):
         monitor_period = int(4.9 * 60 * 1000)
         upload_period = 5 * 60 * 1000
     tasks = [
-        uasyncio.create_task(monitor(epd, monitor_period)),
-        uasyncio.create_task(uploader(wlan, led, upload_period)),
+        uasyncio.create_task(monitor(monitor_period)),
+        uasyncio.create_task(uploader(led, upload_period)),
+        uasyncio.create_task(show_temp(led, monitor_period)),
     ]
     await uasyncio.gather(*tasks)
     print("gathered tasks. Stopping")
@@ -596,21 +604,17 @@ async def main(led: Pin, wlan, epd, debug: bool):
 def blink(led, count=1):
     for i in range(0, count):
         led.on()
-        sleep(0.3)
+        utime.sleep(0.3)
         led.off()
-        sleep(0.6)
-    sleep(1)
+        utime.sleep(0.6)
+    utime.sleep(1)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":    
     led = Pin("LED", Pin.OUT)
     blink(led)
-
     print("Start")
-    epd = EPD_2in13()
-    blink(led, 2)
-    wlan = network.WLAN(network.STA_IF)
-    blink(led, 3)
+
     uasyncio.run(main(led, wlan, epd, debug=False))
-    # print(f"lightsleeping {lightsleep_mins}")
+    #print(f"lightsleeping {lightsleep_mins}")
     # machine.lightsleep(lightsleep_mins*60*1000)GG
