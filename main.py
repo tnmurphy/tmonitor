@@ -53,8 +53,6 @@ async def add_logger_with_correlator(request: Request, call_next):
     """
     request.state.logger = logger.RequestLogger()
     request.state.correlator = request.state.logger.correlator
-    b = await request.body()
-    request.state.logger.debug(f"request body: {b}")
     response = await call_next(request)
     return response
 
@@ -76,7 +74,7 @@ def generic_exception_handler(request: Request, exc):
     return JSONResponse(
         status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
         content=jsonable_encoder(response),
-        headers={"X-Correlation-Id": correlator},
+        headers={"X-Correlation-Id": request.state.correlator},
     )
 
 @app.post("/sense", response_class=JSONResponse)

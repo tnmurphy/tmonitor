@@ -3,12 +3,6 @@ import logging
 import traceback
 from random import randint
 
-
-logger = logging.getLogger()
-if logger.handlers:
-    for handler in logger.handlers:
-        logger.removeHandler(handler)
-
 def generate_correlation_id():
     """
     A random correlation id
@@ -32,17 +26,15 @@ class RequestLogger:
     def debug(self, message):
         self.logger.debug(f"{message}", extra={"correlator": self.correlator})
 
-
     def info(self, message):
         self.logger.info(f"{message}", extra={"correlator": self.correlator})
 
-
     def exception(self, message):
         trace_str = traceback.format_exc().replace("\n", "\\n")
-        logger.error(f"{message}: {trace_str}", extra={"correlator": self.correlator})
+        self.logger.error(f"{message}: {trace_str}", extra={"correlator": self.correlator})
 
     def critical(self, message):
-        logger.critical(f"{message}", extra={"correlator": self.correlator})
+        self.logger.critical(f"{message}", extra={"correlator": self.correlator})
 
 if __name__=="__main__":
     r = RequestLogger()

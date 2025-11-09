@@ -18,7 +18,7 @@ The back-end needs python along with some dependencies. I've included a .service
 home directory although the username and home directory might need to be altered.  The service runs as the pi user. In general
 it's not safe to expose this to the internet at the moment so it should run in the local network. 
 
-The following instructions are for a raspberry pi but will probably work for almost any Linux device with python3 and SQLite installed.
+The following instructions are for a raspberry pi but will probably work for almost any linux device using systemd with python3 and sqllite installed.
 
 * Checkout the module from GitHub
 * fetch all the dependencies and create a virtual environment
@@ -31,8 +31,8 @@ The following instructions are for a raspberry pi but will probably work for alm
 git clone https://github.com/tnmurphy/tmonitor && 
 (cd tmonitor && {
 
-python3 pv run database.py  && # configure the database and also create the venv and install dependencies
-sudo  cp tmonitor.service  && /etc/systemd/system/tmonitor.service
+python3 pv run database.py  &&
+sudo  cp tmonitor.service  /etc/systemd/system/tmonitor.service &&
 sudo systemctl enable tmonitor 
 
 })
