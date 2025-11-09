@@ -16,7 +16,10 @@ from random import randint
 import os
 import sys
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 878f49e (Fix the main install instructions in the README/)
 def generate_correlation_id():
     """
     A random correlation id
