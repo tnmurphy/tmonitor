@@ -3,6 +3,7 @@ import logging
 import traceback
 from random import randint
 
+
 def generate_correlation_id():
     """
     A random correlation id
@@ -35,6 +36,7 @@ class RequestLogger:
 
     def critical(self, message):
         self.logger.critical(message, extra={"correlator": self.correlator})
+
 
 if __name__=="__main__":
     r = RequestLogger()
