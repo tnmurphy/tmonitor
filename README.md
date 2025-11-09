@@ -36,6 +36,11 @@ sudo systemctl enable tmonitor
 })
 ```
 
+One can then check that the backend is running successfully by observing the log like so: 
+```
+journalctl -eu tmonitor
+```
+
 ## The Pico Probe ##
 To install this you'll need a Raspberry Pi Pico and the IDE called Thonny.   The pico should have a recent version of Micropython and Thonny should be used to install some packages on it:
  

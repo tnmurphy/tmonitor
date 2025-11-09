@@ -5,8 +5,7 @@ Temperature probe for Raspberry Pi Pico 2W
 Copyright (c) Timothy Norman Murphy <tnmurphy@gmail.com>
 """
 
-
-from machine import Pin, SPI, ADC, RTC
+from machine import Pin, SPI, ADC, RTC, unique_id
 from datetime import datetime
 import framebuf
 import utime
@@ -422,6 +421,7 @@ def time_date(time_secs):
 
 class Reading:
     """A sensor reading - basically a value and a time."""
+
     def __init__(self, value: float, time_secs=None):
         self.value = value
         if time_secs is None:
@@ -435,7 +435,7 @@ class Reading:
         return self.value > other.value
 
     @classmethod
-    def get(cls) -> cls:
+    def get(cls) -> "Reading":
         return cls(get_temp())
 
 
@@ -464,12 +464,12 @@ class TempStats:
     @classmethod
     def show_temp(cls, epd):
         epd.delay_ms(100)
-        epd.Clear(0xff)
+        epd.Clear(0xFF)
         xpos = 2
         ypos = 10
         epd.fill(0xFF)
-        
-        #epd.delay_ms(100)
+
+        # epd.delay_ms(100)
         text = [
             f"Temp: {cls.last_t.value:.4} *C",
             f" on {cls.last_t.date_string}",
@@ -505,7 +505,7 @@ async def connect(wlan):
     wlan.connect(secrets.wifi_ssid, secrets.wifi_password)
     while not wlan.isconnected():
         await uasyncio.sleep_ms(500)
-        #print(f"wlan status: {wlan.status()}")
+        # print(f"wlan status: {wlan.status()}")
     ip = wlan.ifconfig()[0]
     return ip
 
@@ -514,21 +514,22 @@ def disconnect(wlan):
     wlan.disconnect()
     wlan.active(False)
 
+
 async def show_temp(led: Pin, period_ms: int):
     print("show_temp: started")
     epd = EPD_2in13()
     epd.init(epd.full_update)
-    epd.Clear(0xff)
+    epd.Clear(0xFF)
     epd.display(epd.buffer)
-    blink(led, 2) # temperature shower initialised
-    
+    blink(led, 2)  # temperature shower initialised
+
     while True:
         print("show_temp: displaying\n")
         TempStats.show_temp(epd)
         await uasyncio.sleep_ms(period_ms)
 
 
-async def monitor(period_ms: int):
+async def monitor_temp(period_ms: int):
     print("monitor: started")
     while True:
         print("monitor: measuring temperature\n")
@@ -540,15 +541,15 @@ async def uploader(led: Pin, post_period: int):
     print("uploader: started")
     wlan = network.WLAN(network.STA_IF)
     time_re = re.compile('"current_timestamp" *: *([0-9]+)')
-    machine_id = base64.urlsafe_b64encode(machine.unique_id()).decode("utf-8")[:-1]
+    machine_id = base64.urlsafe_b64encode(unique_id()).decode("utf-8")[:-1]
     print(f"Machine ID: {machine_id}")
     rtc = RTC()
-    
+
     while True:
         if not TempStats.last_uploaded:
             try:
                 ip = await connect(wlan)
-                blink(led) # network connection
+                blink(led)  # network connection
                 print(f"Connected to lan as {ip=}")
 
                 rj = """[{
@@ -557,12 +558,12 @@ async def uploader(led: Pin, post_period: int):
                 "value": %f,
                 "recorded_timestamp": %d
                  }]""" % (
-                    machine_id +"_temp",
+                    machine_id + "_temp",
                     TempStats.last_t.value,
                     int(TempStats.last_t.time_secs),
                 )
                 print(f"uploader: sending {rj}")
-                response = requests.post(BASE_URL + "/sense", data=rj)
+                response = requests.post(secrets.backend_url + "/sense", data=rj)
                 print(f"uploader: response: {response.status_code}")
                 if response.status_code == 200:
                     TempStats.last_uploaded = True
@@ -576,8 +577,8 @@ async def uploader(led: Pin, post_period: int):
                 print("uploader: disconnecting")
                 disconnect(wlan)
             except Exception as e:
-                print(f"Exception in uploader: {type(e)} {str(e)}")
-                if type(e) == SyntaxError:
+                print(f"uploader: exception: {type(e)} {str(e)}")
+                if type(e) is SyntaxError:  # for syntax errors we do want to crash
                     raise e
         else:
             print("uploader: nothing new to upload")
@@ -593,12 +594,12 @@ async def main(led: Pin, debug: bool):
         monitor_period = int(4.9 * 60 * 1000)
         upload_period = 5 * 60 * 1000
     tasks = [
-        uasyncio.create_task(monitor(monitor_period)),
+        uasyncio.create_task(monitor_temp(monitor_period)),
         uasyncio.create_task(uploader(led, upload_period)),
-        uasyncio.create_task(show_temp(led, monitor_period)),
+        # uasyncio.create_task(show_temp(led, monitor_period)),
     ]
-    await uasyncio.gather(*tasks)
-    print("gathered tasks. Stopping")
+    await uasyncio.gather(*tasks)  # will never happen, as things stand.
+    print("main: gathered tasks. Stopping")
 
 
 def blink(led, count=1):
@@ -610,11 +611,11 @@ def blink(led, count=1):
     utime.sleep(1)
 
 
-if __name__ == "__main__":    
+if __name__ == "__main__":
     led = Pin("LED", Pin.OUT)
     blink(led)
     print("Start")
 
-    uasyncio.run(main(led, wlan, epd, debug=False))
-    #print(f"lightsleeping {lightsleep_mins}")
+    uasyncio.run(main(led, debug=False))
+    # print(f"lightsleeping {lightsleep_mins}")
     # machine.lightsleep(lightsleep_mins*60*1000)GG
