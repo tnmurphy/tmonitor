@@ -29,17 +29,19 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
+import logger
+import traceback
+import database
 
 from fastapi import FastAPI, Request
 from sensor_reading import SensorReading, SensorReadingPayload
 from fastapi.responses import JSONResponse
 from sensor_reading import SensorReading
 from sqlmodel import Session, select
-import time
 from typing import List
-import logger
-import traceback
-import database
+from http import HTTPStatus
+import time
+import sys
 
 
 app = FastAPI()
@@ -58,23 +60,39 @@ async def add_logger_with_correlator(request: Request, call_next):
     return response
 
 @app.exception_handler(Exception)
-def generic_exception_handler(request: Request, exc):
+def generic_exception_handler(request: Request, exc: Exception):
     """
        Catch all for any exceptions that we have not handled in the
        endpoints. This saves a great deal of repetition and eliminates
        potential omissions.
     """
-    request.state.logger.exception(
-        f"Generic: {type(exc)}: {exc} trace: {traceback.format_exception(exc)}" 
+
+    # The following snippet of code is aimed at python 3.9 that's installed on raspberry pi.
+    # When that changes to a more recent version then traceback.format_exception can lose the 
+    # last two parameters and we won't need to call sys.exc_info
+
+    major, minor = sys.version_info[:2]
+    assert major >= 3 # will not work on 2
+    if minor <= 9:
+        # Here we can't get the exception information for some reason because
+        # it's all None by the time this function is called.
+        # I'm not sure 10 is better, only that 9 definitely doesn't work. 
+        request.state.logger.exception(
+                f"Generic: {type(exc).__name__}: '{exc}'" 
+        )
+    else: # More modern python. 
+        request.state.logger.exception(
+        f"Generic: {type(exc)}: '{exc}' trace: {traceback.format_exception(exc)}"
     )
+
     response = {
         "id": request.state.correlator,
         "description": "Internal Server Error",
         "description_key": "internal.server.error",
     }
     return JSONResponse(
+        response,
         status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-        content=jsonable_encoder(response),
         headers={"X-Correlation-Id": request.state.correlator},
     )
 

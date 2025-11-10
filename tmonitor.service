@@ -4,7 +4,7 @@ Requires=network.target
 
 [Service]
 User=pi
-WorkingDirectory=/home/pi/src/monitor/
+WorkingDirectory=/home/pi/src/tmonitor/
 ExecStart=/usr/bin/python3 ./pv run startup.py
 
 [Install]

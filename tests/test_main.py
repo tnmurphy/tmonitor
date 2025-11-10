@@ -1,4 +1,6 @@
+from fastapi import Request
 from fastapi.routing import APIRoute
+from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 import pytest
 from pathlib import Path
@@ -10,6 +12,20 @@ sys.path.append(str(Path(__file__).absolute().parents[1]))
 import main
 import database
 database.new_test_database(main.app)
+
+
+def create_failing_endpoint(app):
+    @app.get("/testexception", response_class=JSONResponse)
+    def test_exception(request: Request):
+        """
+           Throws an exception. Check that works.
+        """
+        request.state.logger.debug(f"/testexception")
+        raise Exception("This should be caught by the generic handler")
+        return JSONResponse({}, status_code=200)
+
+    return
+
 
 class TestMain():
 
@@ -32,3 +48,10 @@ class TestMain():
     def test_json422(self):
         r = self.client.post("/sense", json={'bad': 'json'})
         assert r.status_code == 422
+
+    def test_generic_exception(self):
+        create_failing_endpoint(main.app)
+        r = self.client.get("/testexception")
+        assert r.status_code == 200
+
+        

@@ -1,8 +1,19 @@
-import os
+"""
+A Module for logging API calls in a FastAPI app
+
+Ensures that such calls all have a correlator so you 
+know which logs come from which request.
+
+Copyright (c) 2025 Timothy Norman Murphy <tnmurphy@gmail.com>
+
+See the LICENSE file in the current directory
+
+"""
 import logging
 import traceback
 from random import randint
-
+import os
+import sys
 
 def generate_correlation_id():
     """
@@ -15,6 +26,12 @@ def generate_correlation_id():
 class RequestLogger:
     def __init__(self, correlator: str = None):
         self.logger = logging.getLogger("tmonitor_logger")
+
+        # zap the existing handlers so we don't get duplicate logs
+        if self.logger.handlers:
+            for handler in self.logger.handlers:
+                self.logger.removeHandler(handler)
+
         handler = logging.StreamHandler()
         handler.Formatter="[%(filename)20s - %(funcName)25s - Line: %(lineno)4s] %(correlator)s %(levelname)s - %(message)s"
         self.logger.setLevel(os.getenv("TMONITOR_LOG_LEVEL", "INFO"))
