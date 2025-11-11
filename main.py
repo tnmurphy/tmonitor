@@ -116,7 +116,7 @@ def sensor_event(request: Request, readings: List[SensorReadingPayload]):
         "description_key": "ok",
         "current_timestamp": int(time.time())
     }
-    return JSONResponse(s, status_code=200)
+    return JSONResponse(response, status_code=200)
 
 
 @app.get("/read", response_class=JSONResponse)
