@@ -11,7 +11,6 @@ sys.path.append(str(Path(__file__).absolute().parents[1]))
 
 import main
 import database
-database.new_test_database(main.app)
 
 
 def create_failing_endpoint(app):
@@ -52,7 +51,7 @@ class TestMain():
         r = self.client.post("/sense", json={'bad': 'json'})
         assert r.status_code == 422
 
-    def test_generic_exception(self):
+    def test_generic_exception(self, database_engine):
         create_failing_endpoint(main.app)
         r = self.client.get("/testexception")
         assert r.status_code == 500
