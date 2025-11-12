@@ -40,15 +40,16 @@ class SensorReading(SQLModel, table=True):
         if start_timestamp is not None:
             sel = (
                 select(SensorReading)
-                .where(start_timestamp >= start_timestamp)
-                .limit(limit + 1)
+                .where(SensorReading.received_timestamp > start_timestamp)
+                .order_by(SensorReading.received_timestamp)
+                .limit(limit)
             )
         else:
             sel = (
                 select(SensorReading)
-                .where(start_timestamp >= start_timestamp)
-                .limit(limit + 1)
+                .order_by(SensorReading.received_timestamp)
+                .limit(limit)
             )
 
-        result = session.execute(sel).all()
+        result = session.scalars(sel).all()
         return result
