@@ -18,12 +18,13 @@ def create_failing_endpoint(app):
     @app.get("/testexception", response_class=JSONResponse)
     def test_exception(request: Request):
         """
-           Throws an exception. Check that works.
-           Currently this DOES NOT work with anything that's not derived 
-           from HTTPException in the sense that such exceptions get both handled and somehow reraised.
+           Throws an exception. Check that works.  Currently this DOES NOT
+           work with anything that's not derived from HTTPException in
+           the sense that such exceptions get both handled and somehow
+           reraised.
         """
-        request.state.logger.info(f"/testexception")
-        raise HTTPException(500,"This should be caught by the generic handler")
+        request.state.logger.info("/testexception")
+        raise HTTPException(500, "This should be caught by the generic handler")
         return JSONResponse({}, status_code=200)
 
     return
@@ -40,7 +41,7 @@ class TestMain():
         paths = set([r.path for r in app.routes if type(r) is APIRoute])
         sd = paths.symmetric_difference(expected_paths)
         print(f"test_force_error: added or removed endpoints: {sd}")
-        
+
         assert len(sd) == 0
 
     def test_notfound(self):
@@ -56,4 +57,3 @@ class TestMain():
         r = self.client.get("/testexception")
         assert r.status_code == 500
 
-        

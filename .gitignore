@@ -1,5 +1,9 @@
 __pycache__
 *.pyc
+*.bak
 monitor.db
+test_monitor.db
 uv.lock
 pico/secrets.py
+requirements.txt
+.venv

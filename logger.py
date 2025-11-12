@@ -16,6 +16,7 @@ from random import randint
 import os
 import sys
 
+
 def generate_correlation_id():
     """
     A random correlation id

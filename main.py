@@ -4,7 +4,7 @@ Push-Monitoring API
 "Probes" periodically upload sensor readings to
 this service which records them in a database.
 
-A client such as a web app can read the data. 
+A client such as a web app can read the data.
 
 
 MIT License
@@ -29,6 +29,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
+
 import logger
 import traceback
 import database
@@ -46,6 +47,7 @@ import sys
 
 app = FastAPI()
 
+
 @app.middleware("http")
 async def add_logger_with_correlator(request: Request, call_next):
     """
@@ -59,31 +61,30 @@ async def add_logger_with_correlator(request: Request, call_next):
     response = await call_next(request)
     return response
 
+
 @app.exception_handler(Exception)
 def generic_exception_handler(request: Request, exc: Exception):
     """
-       Catch all for any exceptions that we have not handled in the
-       endpoints. This saves a great deal of repetition and eliminates
-       potential omissions.
+    Catch all for any exceptions that we have not handled in the
+    endpoints. This saves a great deal of repetition and eliminates
+    potential omissions.
     """
 
     # The following snippet of code is aimed at python 3.9 that's installed on raspberry pi.
-    # When that changes to a more recent version then traceback.format_exception can lose the 
+    # When that changes to a more recent version then traceback.format_exception can lose the
     # last two parameters and we won't need to call sys.exc_info
 
     major, minor = sys.version_info[:2]
-    assert major >= 3 # will not work on 2
+    assert major >= 3  # will not work on 2
     if minor <= 9:
         # Here we can't get the exception information for some reason because
         # it's all None by the time this function is called.
-        # I'm not sure 10 is better, only that 9 definitely doesn't work. 
+        # I'm not sure 10 is better, only that 9 definitely doesn't work.
+        request.state.logger.exception(f"Generic: {type(exc).__name__}: '{exc}'")
+    else:  # More modern python.
         request.state.logger.exception(
-                f"Generic: {type(exc).__name__}: '{exc}'" 
+            f"Generic: {type(exc)}: '{exc}' trace: {traceback.format_exception(exc)}"
         )
-    else: # More modern python. 
-        request.state.logger.exception(
-        f"Generic: {type(exc)}: '{exc}' trace: {traceback.format_exception(exc)}"
-    )
 
     response = {
         "id": request.state.correlator,
@@ -96,13 +97,14 @@ def generic_exception_handler(request: Request, exc: Exception):
         headers={"X-Correlation-Id": request.state.correlator},
     )
 
+
 @app.post("/sense", response_class=JSONResponse)
 def sensor_event(request: Request, readings: List[SensorReadingPayload]):
     """
-       Probes send sensor readings to this. The input is a list
-       of SensorReadingPayloads in json.
-       It returns the current time so that probes without a clock 
-       battery can sync up.
+    Probes send sensor readings to this. The input is a list
+    of SensorReadingPayloads in json.
+    It returns the current time so that probes without a clock
+    battery can sync up.
     """
     request.state.logger.debug(f"/sense {readings=}")
     with Session(request.app.state.engine) as session:
@@ -114,7 +116,7 @@ def sensor_event(request: Request, readings: List[SensorReadingPayload]):
         "id": request.state.correlator,
         "description": "ok",
         "description_key": "ok",
-        "current_timestamp": int(time.time())
+        "current_timestamp": int(time.time()),
     }
     return JSONResponse(response, status_code=200)
 
@@ -122,7 +124,7 @@ def sensor_event(request: Request, readings: List[SensorReadingPayload]):
 @app.get("/read", response_class=JSONResponse)
 def get_reading(request: Request) -> list[SensorReading]:
     """
-       Returns a list of readings.
+    Returns a list of readings.
     """
     rlist = []
     with Session(request.app.state.engine) as session:
