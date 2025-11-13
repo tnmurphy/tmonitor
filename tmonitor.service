@@ -4,6 +4,7 @@ Requires=network.target
 
 [Service]
 User=pi
+Environment="TMONITOR_LOG_LEVEL=DEBUG"
 WorkingDirectory=/home/pi/src/tmonitor/
 ExecStart=/usr/bin/python3 ./pv run startup.py
 
