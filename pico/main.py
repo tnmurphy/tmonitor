@@ -193,6 +193,7 @@ class EPD_2in13(framebuf.FrameBuffer):
         self.reset_pin = Pin(RST_PIN, Pin.OUT)
         self.dc_pin = Pin(DC_PIN, Pin.OUT)
         self.busy_pin = Pin(BUSY_PIN, Pin.IN, Pin.PULL_UP)
+        
         self.cs_pin = Pin(CS_PIN, Pin.OUT)
         self.width = EPD_WIDTH
         self.height = EPD_HEIGHT
@@ -203,7 +204,7 @@ class EPD_2in13(framebuf.FrameBuffer):
         self.full_update = FULL_UPDATE
         self.part_update = PART_UPDATE
 
-        self.ReadBusy()
+        #self.ReadBusy()
 
         self.spi = SPI(1)
         self.spi.init(baudrate=4000_000)
@@ -463,6 +464,7 @@ class TempStats:
 
     @classmethod
     def show_temp(cls, epd):
+        epd.init(epd.full_update)
         epd.delay_ms(100)
         epd.Clear(0xFF)
         xpos = 2
@@ -518,9 +520,7 @@ def disconnect(wlan):
 async def show_temp(led: Pin, period_ms: int):
     print("show_temp: started")
     epd = EPD_2in13()
-    epd.init(epd.full_update)
-    epd.Clear(0xFF)
-    epd.display(epd.buffer)
+    epd.delay_ms(20)
     blink(led, 2)  # temperature shower initialised
 
     while True:
@@ -532,7 +532,8 @@ async def show_temp(led: Pin, period_ms: int):
 async def monitor_temp(period_ms: int):
     print("monitor: started")
     while True:
-        print("monitor: measuring temperature\n")
+        localtime = utime.time()
+        print(f"monitor: measuring temperature at {localtime}\n")
         TempStats.check_temp()
         await uasyncio.sleep_ms(period_ms)
 
@@ -546,11 +547,14 @@ async def uploader(led: Pin, post_period: int):
     rtc = RTC()
 
     while True:
+        print(f"uploader: last set of stats uploaded: {TempStats.last_uploaded}")
         if not TempStats.last_uploaded:
-            try:
+            try:                
                 ip = await connect(wlan)
                 blink(led)  # network connection
-                print(f"Connected to lan as {ip=}")
+                localtime = utime.time()
+                print(f"uploader: connected to lan as {ip=}")
+                print(f"uploader: time {localtime}")
 
                 rj = """[{
                 "sensor": "%s",
@@ -569,9 +573,15 @@ async def uploader(led: Pin, post_period: int):
                     TempStats.last_uploaded = True
                     if m := time_re.match(response.text):
                         # Set the local clock to match the remote one.
-                        temperature_secs = int(m.groups()[1])
-                        dt = datetime.fromtimestamp(temperature_secs)
-                        rtc.datetime(dt.timetuple())
+
+                        servertime = int(m.groups()[1])
+                        time_delta = localtime - servertime
+                        
+                        # don't set the time repeatedly, only
+                        # if there has been noticable drift
+                        if time_delta < -10 or time_delta > 10:
+                            dt = datetime.fromtimestamp(servertime)
+                            rtc.datetime(dt.timetuple())
                 # await uasyncio.sleep_ms(1000)
                 blink(led, 4)
                 print("uploader: disconnecting")
@@ -582,7 +592,8 @@ async def uploader(led: Pin, post_period: int):
                     raise e
         else:
             print("uploader: nothing new to upload")
-        print(f"uploader: sleeping for {post_period}")
+        localtime = utime.time()
+        print(f"uploader: sleeping for {post_period}ms starting {localtime}, wake at {localtime+post_period/1000}")
         await uasyncio.sleep_ms(post_period)
 
 
@@ -596,7 +607,7 @@ async def main(led: Pin, debug: bool):
     tasks = [
         uasyncio.create_task(monitor_temp(monitor_period)),
         uasyncio.create_task(uploader(led, upload_period)),
-        # uasyncio.create_task(show_temp(led, monitor_period)),
+        #uasyncio.create_task(show_temp(led, monitor_period)),
     ]
     await uasyncio.gather(*tasks)  # will never happen, as things stand.
     print("main: gathered tasks. Stopping")
@@ -615,7 +626,7 @@ if __name__ == "__main__":
     led = Pin("LED", Pin.OUT)
     blink(led)
     print("Start")
-
+    utime.sleep(2)
     uasyncio.run(main(led, debug=False))
     # print(f"lightsleeping {lightsleep_mins}")
     # machine.lightsleep(lightsleep_mins*60*1000)GG
