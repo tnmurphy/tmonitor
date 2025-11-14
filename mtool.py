@@ -6,8 +6,7 @@ import argparse
 import requests
 import json
 import time
-from datetime import datetime, timezone
-from sensor_reading import SensorReadingPayload, SensorReading
+from sensor_reading import SensorReadingPayload
 
 
 def send_data(url):

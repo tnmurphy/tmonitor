@@ -108,10 +108,14 @@ def sensor_event(request: Request, readings: List[SensorReadingPayload]):
     """
     request.state.logger.debug(f"/sense {readings=}")
     with Session(request.app.state.engine) as session:
-        for reading in readings:
-            r = SensorReading.from_payload(reading)
-            session.add(r)
-        session.commit()
+        try:
+            for reading in readings:
+                r = SensorReading.from_payload(reading)
+                session.add(r)
+            session.commit()
+        except sqlalchemy.exc.IntegrityError:
+            raise HTTPError(409, "Possible duplicate")
+
     response = {
         "id": request.state.correlator,
         "description": "ok",

@@ -105,7 +105,7 @@ class Project:
         args_str = " ".join(args)
         print(f"running: {args_str}")
         subprocess.call(
-            f"set -x; . {self.venv_dir}/bin/activate; {args_str}",
+            f"set -x; . {self.venv_dir}/bin/activate; echo \"python=$(which python)\"; {args_str}",
             shell=True,
             executable="/bin/bash"
         )
@@ -148,7 +148,7 @@ def main():
         if not args.args:
             print("Error: Please specify a script to run.")
             sys.exit(1)
-        args.args.insert(0, "/bin/bash")
+        args.args.insert(0, "python3")
         p.run(args.args)
     if args.command == "sh":
         p.run(args.args)
