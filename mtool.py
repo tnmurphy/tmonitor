@@ -19,7 +19,7 @@ def send_data(url):
 
 
 def receive_data(url):
-    st = int(time.time()) - 60*60
+    st = int(time.time()) - 60*60  # 1 hour back
     response = requests.get(f"{url}/read?start_timestamp={st}&limit=100")
     print(f"status={response.status_code}")
     output = json.dumps(response.json(), indent=2)
