@@ -46,11 +46,11 @@ class TestSensorReading:
         
         readings = None
         with Session(main.app.state.engine) as read_session:
-           readings = SensorReading.fetch_readings(session=read_session, start_timestamp=timestamp, limit=10)
+           readings = SensorReading.fetch_readings(session=read_session, start_timestamp=timestamp, period=1000, limit=10)
            values = [r.value for r in readings]
            assert len(values) == 10
 
-           missfirst = SensorReading.fetch_readings(session=read_session, start_timestamp=timestamp+5, limit=10)
+           missfirst = SensorReading.fetch_readings(session=read_session, start_timestamp=timestamp+5, period=1000, limit=10)
            print(missfirst)
            assert len(missfirst) == 9
            assert missfirst[0].recorded_timestamp > timestamp 

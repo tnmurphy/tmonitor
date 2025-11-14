@@ -6,6 +6,7 @@ import argparse
 import requests
 import json
 import time
+from datetime import datetime
 from sensor_reading import SensorReadingPayload
 
 
@@ -19,8 +20,9 @@ def send_data(url):
 
 
 def receive_data(url):
-    st = int(time.time()) - 60*60  # 1 hour back
-    response = requests.get(f"{url}/read?start_timestamp={st}&limit=100")
+    period = 60*60
+    st = int(time.time()) - period  # 1 hour back
+    response = requests.get(f"{url}/read?start_timestamp={st}&period={period}&limit=100")
     print(f"status={response.status_code}")
     response_json = response.json()['readings']
     for j in response_json:
@@ -29,7 +31,7 @@ def receive_data(url):
         received = datetime.fromtimestamp(j['received_timestamp'])
         j['received_time'] = received.isoformat()
 
-    sorted_readings = sorted(response_json, key = lambda x: x['recorded_time'])
+    sorted_readings = sorted(response_json, key=lambda x: x['recorded_time'])
     output = json.dumps(sorted_readings, indent=2)
     print(f"readings={output}")
 

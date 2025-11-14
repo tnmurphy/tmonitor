@@ -128,7 +128,7 @@ def sensor_event(request: Request, readings: List[SensorReadingPayload]):
 
 @app.get("/read", response_class=JSONResponse)
 def get_reading(
-    request: Request, start_timestamp: int = 0, limit=10
+        request: Request, start_timestamp: int = -600, end_timestamp: int = 0, limit=100
 ) -> list[SensorReading]:
     """
     Returns a list of readings.
@@ -136,7 +136,7 @@ def get_reading(
     rlist = []
     with Session(request.app.state.engine) as session:
         results = SensorReading.fetch_readings(
-            session, start_timestamp=start_timestamp, limit=limit
+                session, start_timestamp=start_timestamp, end_timestamp=end_timestamp, limit=limit
         )
         request.state.logger.debug(f"{results=}")
         rlist = [r.model_dump() for r in results]

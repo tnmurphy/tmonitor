@@ -36,20 +36,17 @@ class SensorReading(SQLModel, table=True):
         )
 
     @classmethod
-    def fetch_readings(cls, session: Session, start_timestamp: int = None, limit=10):
-        if start_timestamp is not None:
-            sel = (
-                select(SensorReading)
-                .where(SensorReading.received_timestamp > start_timestamp)
-                .order_by(SensorReading.received_timestamp)
-                .limit(limit)
-            )
-        else:
-            sel = (
-                select(SensorReading)
-                .order_by(SensorReading.received_timestamp)
-                .limit(limit)
-            )
+    def fetch_readings(cls, session: Session, start_timestamp: int = None, period: int = 600, limit=100):
+        if start_timestamp is None:
+            start_timestamp = int(time.time())
+
+        sel = (
+            select(SensorReading)
+            .where(SensorReading.received_timestamp > start_timestamp)
+            .where(SensorReading.received_timestamp <= start_timestamp + period)
+            .order_by(SensorReading.received_timestamp)
+            .limit(limit)
+        )
 
         result = session.scalars(sel).all()
         return result
