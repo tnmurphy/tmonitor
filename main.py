@@ -35,6 +35,7 @@ import traceback
 import database
 
 from fastapi import FastAPI, Request
+from sqlalchemy.exc import IntegrityError
 from sensor_reading import SensorReading, SensorReadingPayload
 from fastapi.responses import JSONResponse
 from sensor_reading import SensorReading
@@ -113,7 +114,7 @@ def sensor_event(request: Request, readings: List[SensorReadingPayload]):
                 r = SensorReading.from_payload(reading)
                 session.add(r)
             session.commit()
-        except sqlalchemy.exc.IntegrityError:
+        except IntegrityError:
             raise HTTPError(409, "Possible duplicate")
 
     response = {

@@ -22,7 +22,15 @@ def receive_data(url):
     st = int(time.time()) - 60*60  # 1 hour back
     response = requests.get(f"{url}/read?start_timestamp={st}&limit=100")
     print(f"status={response.status_code}")
-    output = json.dumps(response.json(), indent=2)
+    response_json = response.json()['readings']
+    for j in response_json:
+        recorded = datetime.fromtimestamp(j['recorded_timestamp'])
+        j['recorded_time'] = recorded.isoformat()
+        received = datetime.fromtimestamp(j['received_timestamp'])
+        j['received_time'] = received.isoformat()
+
+    sorted_readings = sorted(response_json, key = lambda x: x['recorded_time'])
+    output = json.dumps(sorted_readings, indent=2)
     print(f"readings={output}")
 
 
