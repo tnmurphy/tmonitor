@@ -23,6 +23,7 @@ def receive_data(url):
     period = 60*60
     st = int(time.time()) - period  # 1 hour back
     response = requests.get(f"{url}/read?start_timestamp={st}&period={period}&limit=100")
+    print(f"headers={response.headers}")
     print(f"status={response.status_code}")
     response_json = response.json()['readings']
     for j in response_json:

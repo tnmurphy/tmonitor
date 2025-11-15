@@ -38,7 +38,7 @@ class SensorReading(SQLModel, table=True):
     @classmethod
     def fetch_readings(cls, session: Session, start_timestamp: int = None, period: int = 600, limit=100):
         if start_timestamp is None:
-            start_timestamp = int(time.time())
+            start_timestamp = int(time.time()) - period
 
         sel = (
             select(SensorReading)
