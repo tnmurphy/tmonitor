@@ -6,7 +6,7 @@ function App() {
 
   useEffect(() => {
     // Replace this URL with your actual endpoint
-    fetch('http://chivero:5000/read', {mode: "cors"})
+    fetch('http://chivero:5000/read?period=3600', {mode: "cors"})
       .then(response => response.json())
       .then(jsonData => { 
           console.log(jsonData)
