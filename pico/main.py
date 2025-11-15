@@ -16,6 +16,7 @@ import urequests as requests
 import re
 import secrets
 import base64
+import gc
 
 lut_full_update = [
     0x80,
@@ -193,7 +194,7 @@ class EPD_2in13(framebuf.FrameBuffer):
         self.reset_pin = Pin(RST_PIN, Pin.OUT)
         self.dc_pin = Pin(DC_PIN, Pin.OUT)
         self.busy_pin = Pin(BUSY_PIN, Pin.IN, Pin.PULL_UP)
-        
+
         self.cs_pin = Pin(CS_PIN, Pin.OUT)
         self.width = EPD_WIDTH
         self.height = EPD_HEIGHT
@@ -204,7 +205,7 @@ class EPD_2in13(framebuf.FrameBuffer):
         self.full_update = FULL_UPDATE
         self.part_update = PART_UPDATE
 
-        #self.ReadBusy()
+        # self.ReadBusy()
 
         self.spi = SPI(1)
         self.spi.init(baudrate=4000_000)
@@ -443,7 +444,7 @@ class Reading:
 class TempStats:
     max_t: Reading = Reading(-1000)
     min_t: Reading = Reading(1000)
-    last_t: Reading = Reading(0)
+    last_t: list[Reading] = [Reading(0)]
     last_uploaded: bool = False
     dipped_t: Reading = Reading(0)
     threshold: float = 5.0
@@ -457,9 +458,9 @@ class TempStats:
         if cls.min_t > t:
             cls.min_t = t
 
-        if t.value < cls.threshold and cls.last_t.value > cls.threshold:
+        if t.value < cls.threshold and cls.last_t[-1].value > cls.threshold:
             cls.dipped_t = t
-        cls.last_t = t
+        cls.last_t.append(t)
         cls.last_uploaded = False
 
     @classmethod
@@ -505,10 +506,15 @@ async def connect(wlan):
 
     wlan.active(True)
     wlan.connect(secrets.wifi_ssid, secrets.wifi_password)
+    retries = 15
     while not wlan.isconnected():
         await uasyncio.sleep_ms(500)
+        retries -= 1
+        if retries <= 0:
+            return None
         # print(f"wlan status: {wlan.status()}")
     ip = wlan.ifconfig()[0]
+    
     return ip
 
 
@@ -549,38 +555,49 @@ async def uploader(led: Pin, post_period: int):
     while True:
         print(f"uploader: last set of stats uploaded: {TempStats.last_uploaded}")
         if not TempStats.last_uploaded:
-            try:                
+            try:
                 ip = await connect(wlan)
+                if ip is None:
+                    raise Exception("connect failure after retries")
                 blink(led)  # network connection
                 localtime = utime.time()
                 print(f"uploader: connected to lan as {ip=}")
                 print(f"uploader: time {localtime}")
 
-                rj = """[{
-                "sensor": "%s",
-                "unit": "C",
-                "value": %f,
-                "recorded_timestamp": %d
-                 }]""" % (
-                    machine_id + "_temp",
-                    TempStats.last_t.value,
-                    int(TempStats.last_t.time_secs),
+                response_list = []
+                for last_t in TempStats.last_t:
+                    rj = """{
+                    "sensor": "%s",
+                    "unit": "C",
+                    "value": %f,
+                    "recorded_timestamp": %d
+                     }""" % (
+                        machine_id + "_temp",
+                        last_t.value,
+                        int(last_t.time_secs),
+                    )
+                    response_list.append(rj)
+                response_body = "[" + ",".join(response_list) + "]"
+                print(f"uploader: sending {response_body}")
+                response = requests.post(
+                    secrets.backend_url + "/sense", data=response_body
                 )
-                print(f"uploader: sending {rj}")
-                response = requests.post(secrets.backend_url + "/sense", data=rj)
                 print(f"uploader: response: {response.status_code}")
+
                 if response.status_code == 200:
                     TempStats.last_uploaded = True
+                    TempStats.last_t = []
                     if m := time_re.match(response.text):
                         # Set the local clock to match the remote one.
 
                         servertime = int(m.groups()[1])
                         time_delta = localtime - servertime
-                        
+
                         # don't set the time repeatedly, only
                         # if there has been noticable drift
                         if time_delta < -10 or time_delta > 10:
                             dt = datetime.fromtimestamp(servertime)
+                            print(f"uploader: correcting time to {dt}")
                             rtc.datetime(dt.timetuple())
                 # await uasyncio.sleep_ms(1000)
                 blink(led, 4)
@@ -593,7 +610,14 @@ async def uploader(led: Pin, post_period: int):
         else:
             print("uploader: nothing new to upload")
         localtime = utime.time()
-        print(f"uploader: sleeping for {post_period}ms starting {localtime}, wake at {localtime+post_period/1000}")
+        print(
+            f"uploader: sleeping for {post_period}ms starting {localtime}, wake at {localtime+post_period/1000}"
+        )
+        print("uploader: heap memory free before collection:", gc.mem_free())
+        print("uploader: heap memory used:", gc.mem_alloc())
+        gc.collect()
+        print("uploader: heap memory free after collection:", gc.mem_free())
+        print("uploader: heap memory used:", gc.mem_alloc())
         await uasyncio.sleep_ms(post_period)
 
 
@@ -602,12 +626,12 @@ async def main(led: Pin, debug: bool):
         monitor_period = 20 * 1000
         upload_period = 30 * 1000
     else:
-        monitor_period = int(4.9 * 60 * 1000)
+        monitor_period = 5 * 60 * 1000
         upload_period = 5 * 60 * 1000
     tasks = [
         uasyncio.create_task(monitor_temp(monitor_period)),
         uasyncio.create_task(uploader(led, upload_period)),
-        #uasyncio.create_task(show_temp(led, monitor_period)),
+        # uasyncio.create_task(show_temp(led, monitor_period)),
     ]
     await uasyncio.gather(*tasks)  # will never happen, as things stand.
     print("main: gathered tasks. Stopping")
