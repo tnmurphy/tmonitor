@@ -11,7 +11,7 @@ import framebuf
 import utime
 import network
 from picozero import pico_temp_sensor, pico_led
-import uasyncio
+import asyncio
 import urequests as requests
 import re
 import secrets
@@ -91,11 +91,11 @@ async def connect(wlan):
     wlan.connect(secrets.wifi_ssid, secrets.wifi_password)
     retries = 15
     while not wlan.isconnected():
-        await uasyncio.sleep_ms(500)
+        await asyncio.sleep_ms(500)
         retries -= 1
         if retries <= 0:
             return None
-        # print(f"wlan status: {wlan.status()}")
+        print(f"wlan status: {wlan.status()}  {retries=}")        
     ip = wlan.ifconfig()[0]
     
     return ip
@@ -112,11 +112,13 @@ async def monitor_temp(period_ms: int):
         localtime = utime.time()
         print(f"monitor: measuring temperature at {localtime}\n")
         TempStats.check_temp()
-        await uasyncio.sleep_ms(period_ms)
+        print(f"monitor: sleeping for {period_ms} till {localtime + period_ms}\n")
+        await asyncio.sleep_ms(period_ms)
 
 
 async def uploader(led: Pin, post_period: int):
-    print("uploader: started")
+    print(f"uploader: time {localtime}")
+    
     wlan = network.WLAN(network.STA_IF)
     time_re = re.compile('"current_timestamp" *: *([0-9]+)')
     machine_id = base64.urlsafe_b64encode(unique_id()).decode("utf-8")[:-1]
@@ -124,14 +126,15 @@ async def uploader(led: Pin, post_period: int):
     rtc = RTC()
 
     while True:
+        localtime = utime.time()
+        print(f"uploader: activating at {localtime}")
         print(f"uploader: last set of stats uploaded: {TempStats.last_uploaded}")
         if not TempStats.last_uploaded:
             try:
                 ip = await connect(wlan)
                 if ip is None:
                     raise Exception("connect failure after retries")
-                blink(led)  # network connection
-                localtime = utime.time()
+                blink(led)  # network connection                
                 print(f"uploader: connected to lan as {ip=}")
                 print(f"uploader: time {localtime}")
 
@@ -170,7 +173,7 @@ async def uploader(led: Pin, post_period: int):
                             dt = datetime.fromtimestamp(servertime)
                             print(f"uploader: correcting time to {dt}")
                             rtc.datetime(dt.timetuple())
-                # await uasyncio.sleep_ms(1000)
+                # await asyncio.sleep_ms(1000)
                 blink(led, 4)
                 print("uploader: disconnecting")
                 disconnect(wlan)
@@ -189,7 +192,7 @@ async def uploader(led: Pin, post_period: int):
         gc.collect()
         print("uploader: heap memory free after collection:", gc.mem_free())
         print("uploader: heap memory used:", gc.mem_alloc())
-        await uasyncio.sleep_ms(post_period)
+        await asyncio.sleep_ms(post_period)
 
 
 async def main(led: Pin, debug: bool):
@@ -200,11 +203,11 @@ async def main(led: Pin, debug: bool):
         monitor_period = 5 * 60 * 1000
         upload_period = 5 * 60 * 1000
     tasks = [
-        uasyncio.create_task(monitor_temp(monitor_period)),
-        uasyncio.create_task(uploader(led, upload_period)),
-        # uasyncio.create_task(show_temp(led, monitor_period)),
+        asyncio.create_task(monitor_temp(monitor_period)),
+        asyncio.create_task(uploader(led, upload_period)),
+        # asyncio.create_task(show_temp(led, monitor_period)),
     ]
-    await uasyncio.gather(*tasks)  # will never happen, as things stand.
+    await asyncio.gather(*tasks)  # will never happen, as things stand.
     print("main: gathered tasks. Stopping")
 
 
@@ -222,6 +225,6 @@ if __name__ == "__main__":
     blink(led)
     print("Start")
     utime.sleep(2)
-    uasyncio.run(main(led, debug=False))
+    asyncio.run(main(led, debug=False))
     # print(f"lightsleeping {lightsleep_mins}")
     # machine.lightsleep(lightsleep_mins*60*1000)GG
