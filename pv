@@ -162,7 +162,8 @@ class Project:
 
     def _read_toml(self, filename="pyproject.toml"):
         try:
-            import tombl
+            global toml
+            toml = __import__("toml")
             print(f"Using official toml parser")
             return self._read_project_with_official_toml(filename)
         except ImportError as e:
