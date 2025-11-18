@@ -1,10 +1,12 @@
 import smbus
 from devicereader import DeviceReader
+from typing import List, Dict, Any
+import time
 
 class SensorHubReader(DeviceReader):
     """Read from a sensorhub and return probe data"""
     def __init__(self, bus: smbus.SMBus = None, address: int = 0x17):
-        if bus is None
+        if bus is None:
             self.bus = smbus.SMBus(1)
         else:
             self.bus = bus
@@ -19,6 +21,7 @@ class SensorHubReader(DeviceReader):
 
         # Process sensor data
         readings = []
+        read_time = time.time()
 
         # Temperature
         temp = self.bus.read_byte_data(self.address, 0x05)
@@ -26,7 +29,7 @@ class SensorHubReader(DeviceReader):
             "sensor": "temperature",
             "unit": "C",
             "value": float(temp),
-            "recorded_timestamp": int(asyncio.get_event_loop().time())
+            "recorded_timestamp": read_time
         })
 
         # Humidity
@@ -35,7 +38,7 @@ class SensorHubReader(DeviceReader):
             "sensor": "humidity",
             "unit": "%",
             "value": float(humidity),
-            "recorded_timestamp": int(asyncio.get_event_loop().time())
+            "recorded_timestamp": read_time
         })
 
         # Light
@@ -44,7 +47,7 @@ class SensorHubReader(DeviceReader):
             "sensor": "light",
             "unit": "lux",
             "value": float(light),
-            "recorded_timestamp": int(asyncio.get_event_loop().time())
+            "recorded_timestamp": read_time
         })
 
         # Pressure
@@ -55,7 +58,7 @@ class SensorHubReader(DeviceReader):
             "sensor": "pressure",
             "unit": "kPa",
             "value": float(pressure),
-            "recorded_timestamp": int(asyncio.get_event_loop().time())
+            "recorded_timestamp": read_time
         })
 
         # Human presence
@@ -64,7 +67,7 @@ class SensorHubReader(DeviceReader):
             "sensor": "human_presence",
             "unit": "bool",
             "value": float(human),
-            "recorded_timestamp": int(asyncio.get_event_loop().time())
+            "recorded_timestamp": read_time
         })
 
         return readings

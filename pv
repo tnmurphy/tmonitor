@@ -44,6 +44,7 @@ import sys
 import os
 import subprocess
 import re
+import pathlib
 
 from typing import Dict, Any, Union
 
@@ -203,8 +204,9 @@ class Project:
             self.venv()
             self.install_dependencies()
 
-    def run(self, args: str):
+    def run(self, args: str, working_dir: str='.'):
         self.whole_environment()
+        os.chdir(working_dir)
         args_str = " ".join(args)
         print(f"running: {args_str}")
         subprocess.call(
@@ -251,8 +253,10 @@ def main():
         if not args.args:
             print("Error: Please specify a script to run.")
             sys.exit(1)
-        args.args.insert(0, "python3")
-        p.run(args.args)
+       
+        script  = pathlib.Path(args.args[0])
+
+        p.run(["python3", script.name], working_dir = script.parent)
     if args.command == "sh":
         p.run(args.args)
     elif args.command == "venv":

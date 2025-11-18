@@ -1,0 +1,13 @@
+[Unit]
+Description=Sensorhub monitoring probe
+Requires=network.target
+
+[Service]
+User=thaig
+WorkingDirectory=/home/thaig/src/tmonitor/linux
+ExecStart=/usr/bin/python3 ../pv run linux/probe.py
+
+[Install]
+WantedBy=multi-user.target
+
+

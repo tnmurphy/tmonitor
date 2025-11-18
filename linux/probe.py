@@ -3,6 +3,10 @@ import uvloop
 import aiohttp
 from typing import List, Dict, Any
 from devicereader import DeviceReader
+from time import time
+
+DEFAULT_INTERVAL=300
+POST_URL="http://chivero:5000/sense"
 
 async def read_devices(queue: asyncio.Queue, readers: List[DeviceReader]) -> None:
     """Read from all devices and enqueue the readings."""
@@ -12,6 +16,7 @@ async def read_devices(queue: asyncio.Queue, readers: List[DeviceReader]) -> Non
                 readings = await reader.read()
                 await queue.put(readings)
                 print(f"Enqueued {len(readings)} readings at {asyncio.get_event_loop().time()}")
+                print(f"Readings: {readings}")
             except Exception as e:
                 print(f"Error reading from device: {e}")
         await asyncio.sleep(DEFAULT_INTERVAL)
@@ -24,7 +29,7 @@ async def send_readings(queue: asyncio.Queue, url: str) -> None:
             try:
                 async with session.post(url, json=readings) as resp:
                     if resp.status == 200:
-                        print(f"Sent {len(readings)} readings to {url} at {asyncio.get_event_loop().time()}")
+                        print(f"Sent {len(readings)} readings to {url} at {time.time()}")
                     else:
                         print(f"Failed to send readings: {resp.status}")
             except Exception as e:
@@ -51,6 +56,5 @@ async def main(interval: int = DEFAULT_INTERVAL) -> None:
 
 if __name__ == "__main__":
     uvloop.install()
-    interval = int(input("Enter interval in seconds (default 300): ") or DEFAULT_INTERVAL)
-    asyncio.run(main(interval))
+    asyncio.run(main(DEFAULT_INTERVAL))
 
