@@ -39,12 +39,86 @@
 
 """
 import argparse
-import toml
 import venv
 import sys
 import os
 import subprocess
 import re
+
+from typing import Dict, Any, Union
+
+def parse_toml(toml_str: str) -> Dict[str, Any]:
+    """
+    Parse a subset of TOML (enough for pyproject.toml) without external modules.
+    Supports: tables, inline tables, strings, integers, floats, booleans, arrays.
+    """
+    def parse_value(s: str) -> Any:
+        s = s.strip()
+        if not s:
+            return None
+        # Boolean
+        if s == 'true':
+            return True
+        if s == 'false':
+            return False
+        # Integer
+        if re.fullmatch(r'-?\d+', s):
+            return int(s)
+        # Float
+        if re.fullmatch(r'-?\d+\.\d+', s):
+            return float(s)
+        # String (basic and literal)
+        if (s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'")):
+            return s[1:-1]
+        # Array
+        if s.startswith('[') and s.endswith(']'):
+            items = [parse_value(x.strip()) for x in s[1:-1].split(',') if x.strip()]
+            return items
+        # Inline table
+        if s.startswith('{') and s.endswith('}'):
+            return parse_inline_table(s)
+        return s  # fallback
+
+    def parse_inline_table(s: str) -> Dict[str, Any]:
+        s = s.strip()[1:-1]
+        table = {}
+        for pair in re.findall(r'(\w+)\s*=\s*([^,]+)', s):
+            key, val = pair
+            table[key] = parse_value(val)
+        return table
+
+    def parse_table(line: str) -> Dict[str, Any]:
+        match = re.fullmatch(r'\[([^\]]+)\]', line)
+        if not match:
+            return {}
+        table_name = match.group(1)
+        return {table_name: {}}
+
+    result = {}
+    current_table = None
+    for line in toml_str.splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        if line.startswith('['):
+            table = parse_table(line)
+            if table:
+                table_name = next(iter(table))
+                result[table_name] = {}
+                current_table = table_name
+        elif '=' in line:
+            if current_table is None:
+                continue
+            key, val = line.split('=', 1)
+            key = key.strip()
+            val = parse_value(val)
+            result[current_table][key] = val
+    return result
+
+# Example usage:
+
+
+
 
 dep_parse_re = re.compile("^([^=<> ]+)([=<> ]+.*)?$")
 
@@ -63,21 +137,44 @@ def strip_deps(deps: list[str]):
 
 
 class Project:
-
-    def __init__(self, filename="pyproject.toml", venv_dir=".venv"):
-        self.tomlfile = filename
-        self.venv_dir = venv_dir
+    def _read_project_with_official_toml(self, filename):
         try:
             with open(filename, "r") as tf:
                 proj = toml.load(tf)['project']
-            self.dependencies = proj['dependencies']
-            self.name = proj['name']
         except FileNotFoundError:
             print(f"Error: {filename} not found.")
             sys.exit(1)
         except KeyError as e:
             print(f"Error: Missing required key in {filename}: {e}")
+        return proj
+
+    def _read_project_with_internal_toml(self, filename):
+        try:
+            with open(filename, "r") as tf:
+                toml_content = tf.read()
+                parsed = parse_toml(toml_content)
+                return parsed ['project']
+        except FileNotFoundError:
+            print(f"Error: {filename} not found.")
             sys.exit(1)
+        except KeyError as e:
+            print(f"Error: Missing required key in {filename}: {e}")
+
+    def _read_toml(self, filename="pyproject.toml"):
+        try:
+            import tombl
+            print(f"Using official toml parser")
+            return self._read_project_with_official_toml(filename)
+        except ImportError as e:
+            print(f"Using builtin toml parser")
+            return self._read_project_with_internal_toml(filename)
+
+    def __init__(self, filename="pyproject.toml", venv_dir=".venv"):
+        self.tomlfile = filename
+        self.venv_dir = venv_dir
+        proj = self._read_toml(filename)
+        self.dependencies = proj['dependencies']
+        self.name = proj['name']
 
     def venv(self):
         builder = venv.EnvBuilder(with_pip=True)
@@ -89,6 +186,11 @@ class Project:
             for d in self.dependencies:
                 rq.write(f"{d}\n")
         print("pip: installing dependencies")
+        subprocess.call(
+            f"set -x; . {self.venv_dir}/bin/activate; pip install toml",
+            shell=True,
+            executable="/bin/bash"
+        )
         subprocess.call(
             f"set -x; . {self.venv_dir}/bin/activate; pip install -r {tmp_requirements}",
             shell=True,
