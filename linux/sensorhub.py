@@ -21,7 +21,7 @@ class SensorHubReader(DeviceReader):
 
         # Process sensor data
         readings = []
-        read_time = time.time()
+        read_time = int(time.time())
 
         # Temperature
         temp = self.bus.read_byte_data(self.address, 0x05)
