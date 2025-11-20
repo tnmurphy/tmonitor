@@ -32,15 +32,17 @@ SOFTWARE.
 
 import logger
 import traceback
-import database
 
-from fastapi import FastAPI, Request
-from sqlalchemy.exc import IntegrityError
-from sensor_reading import SensorReading, SensorReadingPayload
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sensor_reading import SensorReading
-from sqlmodel import Session, select
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import Session
+
+from sensor_reading import SensorReading, SensorReadingPayload
+
 from typing import List
 from http import HTTPStatus
 import time
@@ -67,6 +69,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class SPAStaticFiles(StaticFiles):
+    """
+    Support client-side routing in Single Page Applications (SPAs).
+    Override the get_response method, which is responsible for retrieving
+    static file responses for given paths.
+    """
+
+    async def get_response(self, path: str, scope):
+        try:
+            return await super().get_response(path, scope)
+        except (HTTPException, StarletteHTTPException) as ex:
+            if ex.status_code == 404:
+                return await super().get_response("index.html", scope)
+            else:
+                raise ex
 
 
 @app.middleware("http")
@@ -118,6 +137,13 @@ def generic_exception_handler(request: Request, exc: Exception):
         headers={"X-Correlation-Id": request.state.correlator},
     )
 
+
+# Mount the SPAStaticFiles instance at the root URL ("/").
+# This means any request not caught by other routes (like the API) will be handled here.
+# - 'directory' specifies where your built static files (from Next.js) reside.
+# - 'html=True' tells FastAPI to serve HTML files by default.
+# - 'name' is an identifier for this mounted application
+app.mount("/", SPAStaticFiles(directory="app/temperature-chart/build", html=True), name="monitor_app")
 
 @app.post("/sense", response_class=JSONResponse)
 def sensor_event(request: Request, readings: List[SensorReadingPayload]):
