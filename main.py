@@ -143,7 +143,7 @@ def generic_exception_handler(request: Request, exc: Exception):
 # - 'directory' specifies where your built static files (from Next.js) reside.
 # - 'html=True' tells FastAPI to serve HTML files by default.
 # - 'name' is an identifier for this mounted application
-app.mount("/", SPAStaticFiles(directory="app/temperature-chart/build", html=True), name="monitor_app")
+app.mount("/app", SPAStaticFiles(directory="app/temperature-chart/build", html=True), name="monitor_app")
 
 @app.post("/sense", response_class=JSONResponse)
 def sensor_event(request: Request, readings: List[SensorReadingPayload]):

@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
+const API_URL='http://chivero:5000/'
+
 function App() {
   const [data, setData] = useState([]);
   const [startTimestamp, setStartTimestamp] = useState(Math.floor(Date.now() / 1000 - 3600));
   const [period, setPeriod] = useState(3600); // Default: 1 hour in seconds
 
   useEffect(() => {
-    fetch(`http://chivero:5000/read?start_timestamp=${startTimestamp}&period=${period}`, { mode: "cors" })
+    fetch(API_URL+`/read?start_timestamp=${startTimestamp}&period=${period}`, { mode: "cors" })
       .then(response => response.json())
       .then(jsonData => {
         const formattedData = jsonData.readings.filter(item => item.unit==="C").map(item => ({
