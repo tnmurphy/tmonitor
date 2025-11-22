@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
-const API_URL='http://chivero:5000/'
+const API_URL='http://chivero:5000'
 
 function App() {
   const [data, setData] = useState([]);
@@ -35,15 +35,12 @@ function App() {
   const setToNow = () => setStartTimestamp(Math.floor(Date.now() / 1000));
 
   return (
-    <div style={{ width: '100%', height: 400 }}>
-      <h1>Temperature Over Time</h1>
+    <div style={{ width: '95%', height: 400 }}>
+      <h1>Greenhouse Temperature</h1>
       <div style={{ marginBottom: '16px' }}>
         <button onClick={moveBackward}>Back</button>
         <button onClick={moveForward}>Forward</button>
         <button onClick={setToNow}>Now</button>
-        <span style={{ margin: '0 10px' }}>
-          Start: {new Date(startTimestamp * 1000).toLocaleString()}
-        </span>
       </div>
       <div style={{ marginBottom: '16px' }}>
         <button
@@ -67,7 +64,7 @@ function App() {
       </div>
       <ResponsiveContainer>
         <LineChart
-          data={data}
+          responsive data={data}
           margin={{
             top: 5, right: 30, left: 20, bottom: 5,
           }}
@@ -80,6 +77,9 @@ function App() {
           <Line type="monotone" dataKey="temperature" stroke="#8884d8" activeDot={{ r: 8 }} />
         </LineChart>
       </ResponsiveContainer>
+      <span style={{ margin: '0 10px' }}>
+        Start: {new Date(startTimestamp * 1000).toLocaleString()}
+      </span>
     </div>
   );
 }
