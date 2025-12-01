@@ -9,10 +9,18 @@ import time
 
 # engine = create_engine("sqlite:///:memory:")
 
+allowed_units = set([
+        "C",
+        "%",
+        "lux",
+        "kPa",
+        "bool"
+    ])
+
 
 class SensorReadingPayload(BaseModel):
     sensor: str = Field(index=True, default=None)
-    unit: str = Field(default=None)
+    unit: str = Field(default=None) 
     value: float = Field(default=None)
     recorded_timestamp: int = Field(default=None)
 
@@ -36,14 +44,19 @@ class SensorReading(SQLModel, table=True):
         )
 
     @classmethod
-    def fetch_readings(cls, session: Session, start_timestamp: int = None, period: int = 600, limit=100):
+    def fetch_readings(cls, session: Session, start_timestamp: int = None, period: int = 600, limit=1000, units: set[str] = set(['C'])):
         if start_timestamp is None:
             start_timestamp = int(time.time()) - period
+
+        invalid_units = units.difference(allowed_units)
+        if len(invalid_units) > 0:
+            raise ValueError("invalid units supplied"+invalid_units)
 
         sel = (
             select(SensorReading)
             .where(SensorReading.received_timestamp > start_timestamp)
             .where(SensorReading.received_timestamp <= start_timestamp + period)
+            .where(SensorReading.unit.in_(units))
             .order_by(SensorReading.received_timestamp)
             .limit(limit)
         )
