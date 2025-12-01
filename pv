@@ -119,9 +119,8 @@ def parse_toml(toml_str: str) -> Dict[str, Any]:
 # Example usage:
 
 
-
-
 dep_parse_re = re.compile("^([^=<> ]+)([=<> ]+.*)?$")
+
 
 def strip_dep(dep: str):
     dm = dep_parse_re.match(dep)
@@ -134,7 +133,6 @@ def strip_dep(dep: str):
 def strip_deps(deps: list[str]):
     return [strip_dep(d) for d in deps]
 
-            
 
 
 class Project:
@@ -199,8 +197,13 @@ class Project:
             executable="/bin/bash"
         )
 
-    def whole_environment(self):
+    def out_of_date_env(self):
         if not os.path.exists(self.venv_dir):
+            return True
+        return False
+
+    def whole_environment(self):
+        if self.out_of_date_env():
             self.venv()
             self.install_dependencies()
 

@@ -136,7 +136,7 @@ def sensor_event(request: Request, readings: List[SensorReadingPayload]):
                 session.add(r)
             session.commit()
         except IntegrityError:
-            raise HTTPError(409, "Possible duplicate")
+            raise HTTPException(409, "Possible duplicate")
 
     response = {
         "id": request.state.correlator,
@@ -161,7 +161,7 @@ def get_reading(
         results = SensorReading.fetch_readings(
                 session, start_timestamp=start_timestamp, period=period, limit=limit, units=units_list
         )
-        request.state.logger.debug(f"count: {len(results)} {results=}")
+        request.state.logger.debug(f"Returning for {start_timestamp=} and period {period=} returning  count: {len(results)}\n {results=}")
         rlist = [r.model_dump() for r in results]
         response = {"readings": rlist, "current_timestamp": int(time.time())}
 
