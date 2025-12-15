@@ -16,12 +16,13 @@ from datetime import datetime, timezone
 from sensor_reading import (
     SampleBucket,
     SensorReading,
+    SensorSummary,
     SensorReadingPayload,
     SampleMethod,
     Average,
     Minimum,
-#    Maximum,
-    Sampler
+    #    Maximum,
+    Sampler,
 )
 
 
@@ -33,7 +34,7 @@ def ten_readings(database_engine):
         temperature = 16.0
         for i in range(0, 10):
             r = SensorReading(
-                sensor="test_create_reading_1",
+                sensor="sensor_1",
                 unit="C",
                 value=temperature,
                 recorded_timestamp=timestamp,
@@ -48,28 +49,88 @@ def ten_readings(database_engine):
         return database_engine, start_timestamp
 
 
+@pytest.fixture
+def sample_readings():
+    """Fixture to create sample SensorReading objects"""
+    return [
+        SensorReading(
+            sensor="temp1",
+            unit="C",
+            value=10.0,
+            recorded_timestamp=1000,
+            received_timestamp=1001,
+            method=SampleMethod.raw,
+        ),
+        SensorReading(
+            sensor="temp1",
+            unit="C",
+            value=15.0,
+            recorded_timestamp=1001,
+            received_timestamp=1002,
+            method=SampleMethod.raw,
+        ),
+        SensorReading(
+            sensor="temp1",
+            unit="C",
+            value=20.0,
+            recorded_timestamp=1002,
+            received_timestamp=1003,
+            method=SampleMethod.raw,
+        ),
+        SensorReading(
+            sensor="temp1",
+            unit="C",
+            value=5.0,
+            recorded_timestamp=1003,
+            received_timestamp=1004,
+            method=SampleMethod.raw,
+        ),
+        SensorReading(
+            sensor="temp1",
+            unit="C",
+            value=12.0,
+            recorded_timestamp=1004,
+            received_timestamp=1005,
+            method=SampleMethod.raw,
+        ),
+    ]
+
+
+@pytest.fixture
+def sample_bucket(sample_readings):
+    """Fixture to create a sample bucket with test data"""
+    bucket = SampleBucket(
+        timestamp=1000,
+        sensor="temp1",
+        unit="C",
+        methods={SampleMethod.avg, SampleMethod.min_, SampleMethod.max_},
+    )
+    for reading in sample_readings:
+        bucket.add(reading)
+    return bucket
+
+
 class TestSensorReading:
 
     client = TestClient(main.app)
 
-    def test_fetch_readings(self, ten_readings):
+    def test_fetch(self, ten_readings):
         """see if we can fetch more than one reading"""
         database_engine, timestamp = ten_readings
 
-        readings = None
         with Session(main.app.state.engine) as read_session:
-            readings = SensorReading.fetch_readings(
+            summary = SensorSummary.fetch(
                 session=read_session, start_timestamp=timestamp, period=1000, limit=10
             )
-            values = [r.value for r in readings]
+            values = [r.value for r in summary.readings_by_sensor['sensor_1']['C'][SampleMethod.raw]]
             assert len(values) == 10
 
-            missfirst = SensorReading.fetch_readings(
+            missfirst = SensorSummary.fetch(
                 session=read_session,
                 start_timestamp=timestamp + 5,
                 period=1000,
                 limit=10,
-            )
+            ).readings_by_sensor['sensor_1']['C'][SampleMethod.raw]
             print(missfirst)
             assert len(missfirst) == 9
             assert missfirst[0].recorded_timestamp > timestamp
@@ -101,100 +162,39 @@ class TestSensorReading:
             assert len(result) == 1
 
 
-
-@pytest.fixture
-def sample_readings():
-    """Fixture to create sample SensorReading objects"""
-    return [
-        SensorReading(
-            sensor="temp",
-            unit="C",
-            value=10.0,
-            recorded_timestamp=1000,
-            received_timestamp=1001,
-            method=SampleMethod.raw
-        ),
-        SensorReading(
-            sensor="temp",
-            unit="C",
-            value=15.0,
-            recorded_timestamp=1001,
-            received_timestamp=1002,
-            method=SampleMethod.raw
-        ),
-        SensorReading(
-            sensor="temp",
-            unit="C",
-            value=20.0,
-            recorded_timestamp=1002,
-            received_timestamp=1003,
-            method=SampleMethod.raw
-        ),
-        SensorReading(
-            sensor="temp",
-            unit="C",
-            value=5.0,
-            recorded_timestamp=1003,
-            received_timestamp=1004,
-            method=SampleMethod.raw
-        ),
-        SensorReading(
-            sensor="temp",
-            unit="C",
-            value=12.0,
-            recorded_timestamp=1004,
-            received_timestamp=1005,
-            method=SampleMethod.raw
-        )
-    ]
-
-@pytest.fixture
-def sample_bucket(sample_readings):
-    """Fixture to create a sample bucket with test data"""
-    bucket = SampleBucket(
-        timestamp=1000,
-        sensor="temp",
-        unit="C",
-        methods={SampleMethod.avg, SampleMethod.min_, SampleMethod.max_}
-    )
-    for reading in sample_readings:
-        bucket.add(reading)
-    return bucket
-
 def test_sample_bucket_initialization():
     """Test that SampleBucket is initialized correctly"""
     bucket = SampleBucket(
         timestamp=1000,
-        sensor="temp",
+        sensor="temp1",
         unit="C",
-        methods={SampleMethod.avg, SampleMethod.min_}
+        methods={SampleMethod.avg, SampleMethod.min_},
     )
 
     assert bucket.timestamp == 1000
-    assert bucket.sensor == "temp"
+    assert bucket.sensor == "temp1"
     assert bucket.unit == "C"
     assert len(bucket.samplers) == 2
+
 
 def test_add_out_of_range_reading():
     """Test that adding a reading with timestamp before bucket timestamp raises ValueError"""
     bucket = SampleBucket(
-        timestamp=1000,
-        sensor="temp",
-        unit="C",
-        methods={SampleMethod.avg}
+        timestamp=1000, sensor="temp1", unit="C", methods={SampleMethod.avg}
     )
 
     reading = SensorReading(
-        sensor="temp",
+        sensor="temp1",
         unit="C",
         value=10.0,
         recorded_timestamp=999,  # Before bucket timestamp
         received_timestamp=1000,
-        method=SampleMethod.raw
+        method=SampleMethod.raw,
     )
 
     with pytest.raises(ValueError):
         bucket.add(reading)
+
 
 def test_sample_bucket_samples(sample_bucket):
     """Test that the samples method returns correct values"""
@@ -206,7 +206,7 @@ def test_sample_bucket_samples(sample_bucket):
 
     # Check average calculation
     avg_sample = samples[SampleMethod.avg]
-    assert avg_sample.value == pytest.approx(12.5)  # (10+15+20+5+12)/5 = 12.4
+    assert avg_sample.value == pytest.approx(12.4)  # (10+15+20+5+12)/5 = 12.4
 
     # Check min calculation
     min_sample = samples[SampleMethod.min_]
@@ -216,75 +216,78 @@ def test_sample_bucket_samples(sample_bucket):
     max_sample = samples[SampleMethod.max_]
     assert max_sample.value == 20.0
 
+
 def test_downsample_method():
     """Test the downsample static method"""
     readings = [
         SensorReading(
-            sensor="temp",
+            sensor="temp1",
             unit="C",
             value=10.0,
             recorded_timestamp=1000,
             received_timestamp=1001,
-            method=SampleMethod.raw
+            method=SampleMethod.raw,
         ),
         SensorReading(
-            sensor="temp",
+            sensor="temp1",
             unit="C",
             value=15.0,
             recorded_timestamp=1001,
             received_timestamp=1002,
-            method=SampleMethod.raw
+            method=SampleMethod.raw,
         ),
         SensorReading(
-            sensor="temp",
+            sensor="temp1",
             unit="C",
             value=20.0,
             recorded_timestamp=1002,
             received_timestamp=1003,
-            method=SampleMethod.raw
+            method=SampleMethod.raw,
         ),
         SensorReading(
-            sensor="temp",
+            sensor="temp1",
             unit="C",
             value=5.0,
             recorded_timestamp=1003,
             received_timestamp=1004,
-            method=SampleMethod.raw
+            method=SampleMethod.raw,
         ),
         SensorReading(
-            sensor="temp",
+            sensor="temp1",
             unit="C",
             value=12.0,
             recorded_timestamp=1004,
             received_timestamp=1005,
-            method=SampleMethod.raw
+            method=SampleMethod.raw,
         ),
         SensorReading(
-            sensor="temp",
+            sensor="temp1",
             unit="C",
             value=8.0,
             recorded_timestamp=1005,
             received_timestamp=1006,
-            method=SampleMethod.raw
-        )
+            method=SampleMethod.raw,
+        ),
     ]
 
     result = SampleBucket.downsample(
-        data=readings,
-        methods={SampleMethod.avg, SampleMethod.min_},
-        bucket_count=2
+        data=readings, methods={SampleMethod.avg, SampleMethod.min_, SampleMethod.max_}, bucket_count=2
     )
 
     assert len(result[SampleMethod.avg]) == 2
     assert len(result[SampleMethod.min_]) == 2
+    assert len(result[SampleMethod.max_]) == 2
 
     # First bucket (timestamps 1000-1003)
-    assert result[SampleMethod.avg][0].value == pytest.approx(13.75)  # (10+15+20+5)/4
-    assert result[SampleMethod.min_][0].value == 5.0
+    assert result[SampleMethod.avg][0].value == pytest.approx(15.0)  # (10+15+20)/4
+    assert result[SampleMethod.min_][0].value == 10.0
+    assert result[SampleMethod.max_][0].value == 20.0
 
     # Second bucket (timestamps 1004-1005)
-    assert result[SampleMethod.avg][1].value == pytest.approx(10.0)  # (12+8)/2
-    assert result[SampleMethod.min_][1].value == 8.0
+    assert result[SampleMethod.avg][1].value == pytest.approx(8.33333)  # (5+12+8)/3
+    assert result[SampleMethod.min_][1].value == 5.0
+    assert result[SampleMethod.max_][1].value == 12.0
+
 
 def test_sampler_factory():
     """Test that the Sampler factory returns the correct sampler instances"""
@@ -294,15 +297,12 @@ def test_sampler_factory():
     min_sampler = Sampler.factory(SampleMethod.min_)
     assert isinstance(min_sampler, Minimum)
 
+
 def test_empty_bucket_samples():
     """Test that an empty bucket returns empty samples"""
     bucket = SampleBucket(
-        timestamp=1000,
-        sensor="temp",
-        unit="C",
-        methods={SampleMethod.avg}
+        timestamp=1000, sensor="temp1", unit="C", methods={SampleMethod.avg}
     )
 
     samples = bucket.samples()
     assert len(samples) == 0
-

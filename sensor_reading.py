@@ -2,7 +2,7 @@
 Models and database for sensor readings
 """
 
-from sqlmodel import Field, Session, SQLModel, create_engine, select, DateTime, Enum
+from sqlmodel import Field, Session, SQLModel, create_engine, select, DateTime, Enum, Column
 from pydantic import BaseModel
 from datetime import datetime, timezone
 import time
@@ -45,7 +45,8 @@ class SensorReading(SQLModel, table=True):
     sensor: str = Field(index=True, default=None, primary_key=True)
     unit: str = Field(default=None)
     value: float = Field(default=None)
-    method: str = Enum(SampleMethod, default=SampleMethod.raw)
+    method: str = Field(sa_column=Column(Enum(SampleMethod)),default=SampleMethod.raw)
+
     recorded_timestamp: int = Field(default=None, primary_key=True)
     received_timestamp: int = Field(default=None)
 
@@ -108,10 +109,10 @@ class Minimum(Sampler):
     method = SampleMethod.min_
 
     def __init__(self):
-        self.minimum = -10.0e20  # practical minimum
+        self.minimum = None
 
     def add(self, value: float):
-        if value < self.minimum:
+        if self.minimum is None or value < self.minimum:
             self.minimum = value
 
     def sample(self) -> float:
@@ -125,10 +126,10 @@ class Maximum(Sampler):
     method = SampleMethod.max_
 
     def __init__(self):
-        self.maximum = 10.0e20  # practical minimum
+        self.maximum = None  # practical minimum
 
     def add(self, value: float):
-        if value > self.maximum:
+        if self.maximum is None or value > self.maximum:
             self.maximum = value
 
     def sample(self) -> float:
@@ -158,7 +159,7 @@ class SampleBucket:
     def add(self, r: SensorReading):
         if r.recorded_timestamp < self.timestamp:
             raise ValueError(
-                f"adding values from outside the bucket  {r.timestamp} to sample bucket for {self.sensor}"
+                f"adding values from outside the bucket  {r.recorded_timestamp} to sample bucket for {self.sensor}"
             )
         for s in self.samplers:
             s.add(r.value)
@@ -176,7 +177,7 @@ class SampleBucket:
 
     @staticmethod
     def downsample(
-        data: list[SensorReading], methods: set(SampleMethod), bucket_count: int
+        data: list[SensorReading], methods: set[SampleMethod], bucket_count: int
     ) -> list[SensorReading]:
         """
         Creates a number of buckets, "puts" the data into them and then
@@ -194,7 +195,8 @@ class SampleBucket:
         buckets = []
         start_timestamp = data[0].recorded_timestamp
         end_timestamp = data[-1].recorded_timestamp
-        bucket_size = (end_timestamp - start_timestamp) / bucket_count
+        time_range = end_timestamp - start_timestamp
+        bucket_size = time_range / bucket_count
 
         sensor = data[0].sensor
         unit = data[0].unit
@@ -207,7 +209,12 @@ class SampleBucket:
 
         # pop each element of the raw data into the appropriate bucket.
         for r in data:
-            slot = int((r.recorded_timestamp - start_timestamp) / bucket_size)
+            float_slot = (r.recorded_timestamp - start_timestamp) / bucket_size
+            slot = int(float_slot)
+            if  slot >= bucket_count:
+                # The last data item will likely want to fit in an outer bucket. Shove it in the last.
+                #print(f"overfill {slot=} {bucket_count=} {r.recorded_timestamp=} {r.value=} {bucket_size=} {float_slot=} {time_range=}")
+                slot = bucket_count-1
             buckets[slot].add(r)
 
         downsampled_series = {m: [] for m in methods}
@@ -234,7 +241,7 @@ class SensorSummary(BaseModel):
         sensors or sensor types. separate data by sensor then unit type so that it's easy
         for it to be displayed on a different axis."""
 
-        instance = cls({})
+        instance = cls(readings_by_sensor={})
 
         for d in alldata:
             if d.sensor not in instance.readings_by_sensor:
@@ -246,7 +253,7 @@ class SensorSummary(BaseModel):
 
         return instance
 
-    def downsample(self, methods: set(SampleMethod), bucket_count: int):
+    def downsample(self, methods: set[SampleMethod], bucket_count: int):
         new_readings = {}
         for sensorname, units in self.readings_by_sensor.items():
             new_readings[sensorname] = {}
@@ -255,35 +262,39 @@ class SensorSummary(BaseModel):
                 sampled_data = downsample(data[SampleMethod.raw], methods, bucket_count)
                 new_units[unit] = sampled_data
 
+    @classmethod
+    def fetch(
+        cls,
+        session: Session,
+        start_timestamp: int = None,
+        period: int = 600,
+        limit=1000,
+        units: set[str] = set(["C"]),
+        sensors: set = None,
+        sample_buckets=None,
+        sample_type=None,
+    ) -> 'SensorSummary':
+        if start_timestamp is None:
+            start_timestamp = int(time.time()) - period
 
-def fetch_readings(
-    session: Session,
-    start_timestamp: int = None,
-    period: int = 600,
-    limit=1000,
-    units: set[str] = set(["C"]),
-    sensors: set = None,
-    sample_buckets=None,
-    sample_type=None,
-):
-    if start_timestamp is None:
-        start_timestamp = int(time.time()) - period
+        invalid_units = units.difference(allowed_units)
+        if len(invalid_units) > 0:
+            raise ValueError("invalid units supplied" + invalid_units)
 
-    invalid_units = units.difference(allowed_units)
-    if len(invalid_units) > 0:
-        raise ValueError("invalid units supplied" + invalid_units)
+        sel = select(SensorReading)
+        if sensors is not None:
+            sel = sel.where(SensorReading.sensor.in_(sensors))
 
-    sel = select(SensorReading)
-    if sensors is not None:
-        sel = sel.where(SensorReading.sensor.in_(sensors))
+        sel = sel.where(SensorReading.received_timestamp > start_timestamp)
+        sel = sel.where(SensorReading.received_timestamp <= start_timestamp + period)
+        sel = sel.where(SensorReading.unit.in_(units))
+        sel = sel.order_by(SensorReading.received_timestamp)
+        sel = sel.limit(limit)
 
-    sel = sel.where(SensorReading.received_timestamp > start_timestamp)
-    sel = sel.where(SensorReading.received_timestamp <= start_timestamp + period)
-    sel = sel.where(SensorReading.unit.in_(units))
-    sel = sel.order_by(SensorReading.received_timestamp)
-    sel = sel.limit(limit)
+        alldata = session.scalars(sel).all()
 
-    alldata = session.scalars(sel).all()
-
-    # if sample_type is None or raw:  What's left out is samples like min-max, average, random etc.
-    return organise_readings(alldata, units)
+        # if sample_type is None or raw:  What's left out is samples like min-max, average, random etc.
+        
+        sampled_summary = cls.organise_readings(alldata, units)
+        print(sampled_summary)
+        return sampled_summary
