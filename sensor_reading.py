@@ -172,7 +172,7 @@ class SampleBucket:
                     sensor=self.sensor, unit=self.unit, value=s.sample()
                 )
             except ValueError as e:
-               pass # Average of an empty bucket for example - just don't record any value
+                pass # Average of an empty bucket for example - just don't record any value
         return samples_
 
     @staticmethod
@@ -187,8 +187,8 @@ class SampleBucket:
         returns a dictionary with the sample method as a key and the set
         of samples for that method. e.g.
         {
-          "avg" : [ 12.0, 13.0, 15.0 ],
-          "min_": [  5.0, 10.0, 8.5  ]
+          "avg" : [ { "value": 12.0, "timestamp": 123 }, { "value": 13.0, "timestamp": 124}, 15.0, 125} ],
+          "min_": [ { "value":  5.0, "timestamp": 123 }, { "value": 10.0, "timestamp": 124}, 8.5, 125}  ]
         }
 
         """
