@@ -147,10 +147,9 @@ class SampleBucket:
     when all the data for that bucket has been added to it.
     """
 
-    def __init__(self, timestamp, sensor, unit, methods: set[SampleMethod]):
-        self.sensor = sensor
-        self.unit = unit
+    def __init__(self, timestamp, methods: set[SampleMethod]):
         self.timestamp = timestamp
+        self.sample_count = 0
 
         self.samplers = []
         for m in methods:
@@ -164,15 +163,18 @@ class SampleBucket:
         for s in self.samplers:
             s.add(r.value)
 
+        self.sample_count += 1
+
     def samples(self):
-        samples_ = {}
+        """Returns a dictionary with the bucket timestamp and the result of each sampler. """
+        if sample_count == 0:
+            return None
+        samples_ = {"timestamp": self.timestamp}
         for s in self.samplers:
             try:
-                samples_[s.method] = SensorReading(
-                    sensor=self.sensor, unit=self.unit, value=s.sample()
-                )
+                samples_[s.method] = s.sample()
             except ValueError as e:
-                pass # Average of an empty bucket for example - just don't record any value
+                pass  # Average of an empty bucket for example - just don't record any value
         return samples_
 
     @staticmethod
@@ -186,9 +188,14 @@ class SampleBucket:
 
         returns a dictionary with the sample method as a key and the set
         of samples for that method. e.g.
-        {
-          "avg" : [ { "value": 12.0, "timestamp": 123 }, { "value": 13.0, "timestamp": 124}, 15.0, 125} ],
-          "min_": [ { "value":  5.0, "timestamp": 123 }, { "value": 10.0, "timestamp": 124}, 8.5, 125}  ]
+        { "unit": "C", "data": [
+          { "avg" : 14.0, "min_": 12.0, "timestamp": 123 },
+          { "avg" : 15.0, "min_": 13.0, "timestamp": 124 },
+          { "avg" : 16.0, "min_": 15.0, "timestamp": 125 },
+          { "avg" :  6.0, "min_":  5.0, "timestamp": 123 },
+          { "avg" :  5.0, "min_":  1.0, "timestamp": 124 },
+          { "avg" :  6.0, "min_":  4.0, "timestamp": 125 }
+          ]
         }
 
         """
@@ -214,15 +221,17 @@ class SampleBucket:
             if  slot >= bucket_count:
                 # The last data item will likely want to fit in an outer bucket. Shove it in the last.
                 #print(f"overfill {slot=} {bucket_count=} {r.recorded_timestamp=} {r.value=} {bucket_size=} {float_slot=} {time_range=}")
-                slot = bucket_count-1
+                slot = bucket_count - 1
             buckets[slot].add(r)
 
-        downsampled_series = {m: [] for m in methods}
+        data = []
         for b in buckets:
             bucket_samples = b.samples()
-            for method_, reading in bucket_samples.items():
-                downsampled_series[method_].append(reading)
+            if bucket_samples is None:
+                continue
+            data.append(bucket_samples)
 
+        downsampled_series = {"unit": unit, "data": data}
         return downsampled_series
 
 
@@ -271,6 +280,37 @@ class SensorSummary(BaseModel):
         limit=1000,
         units: set[str] = set(["C"]),
         sensors: set = None,
+    ) -> 'SensorSummary':
+        if start_timestamp is None:
+            start_timestamp = int(time.time()) - period
+
+        invalid_units = units.difference(allowed_units)
+        if len(invalid_units) > 0:
+            raise ValueError("invalid units supplied" + invalid_units)
+
+        sel = select(SensorReading)
+        if sensors is not None:
+            sel = sel.where(SensorReading.sensor.in_(sensors))
+
+        sel = sel.where(SensorReading.received_timestamp > start_timestamp)
+        sel = sel.where(SensorReading.received_timestamp <= start_timestamp + period)
+        sel = sel.where(SensorReading.unit.in_(units))
+        sel = sel.order_by(SensorReading.received_timestamp)
+        sel = sel.limit(limit)
+
+        alldata = session.scalars(sel).all()
+
+        return alldata
+
+    @classmethod
+    def sample(
+        cls,
+        session: Session,
+        start_timestamp: int = None,
+        period: int = 600,
+        limit=1000,
+        units: set[str] = set(["C"]),
+        sensors: set = None,
         sample_buckets=None,
         sample_type=None,
     ) -> 'SensorSummary':
@@ -293,8 +333,4 @@ class SensorSummary(BaseModel):
 
         alldata = session.scalars(sel).all()
 
-        # if sample_type is None or raw:  What's left out is samples like min-max, average, random etc.
-        
-        sampled_summary = cls.organise_readings(alldata, units)
-        print(sampled_summary)
-        return sampled_summary
+        return alldata

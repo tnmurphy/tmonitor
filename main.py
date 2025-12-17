@@ -166,3 +166,24 @@ def get_reading(
         response = {"readings": rlist, "current_timestamp": int(time.time())}
 
     return JSONResponse(response, status_code=200)
+
+@app.get("/sample", response_class=JSONResponse)
+def get_reading(
+        request: Request, start_timestamp: int = None, period: int = 600, limit=1000, units='C'
+) -> list[SampleBucket]:
+    """
+    Returns a list of readings.
+    """
+    request.state.logger.debug(f"/read {limit=} {period=}")
+    rlist = []
+
+    units_list = set([ u.strip() for u in units.split(',') ])
+    with Session(request.app.state.engine) as session:
+        results = SensorReading.sample(
+                session, start_timestamp=start_timestamp, period=period, limit=limit, units=units_list
+        )
+        request.state.logger.debug(f"Returning for {start_timestamp=} and period {period=} returning  count: {len(results)}\n {results=}")
+        rlist = [r.model_dump() for r in results]
+        response = {"readings": rlist, "current_timestamp": int(time.time())}
+
+    return JSONResponse(response, status_code=200)
