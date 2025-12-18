@@ -22,11 +22,15 @@ class SampleMethod(enum.Enum):
     """how the reading came about - either raw from a sensor or an average or other selection from raw
     readings"""
 
-    raw = 0  # a reading straight from  a sensor
-    max_ = 1  # the maximum reading from a set of raw readings in a particular bucket
-    min_ = 2  # the minimum reading from a set of raw readings in a particular bucket
+    raw = "raw"  # a reading straight from  a sensor
+    max_ = (
+        "max"  # the maximum reading from a set of raw readings in a particular bucket
+    )
+    min_ = (
+        "min"  # the minimum reading from a set of raw readings in a particular bucket
+    )
 
-    avg = 3  # the average reading in a particular time bucket
+    avg = "avg"  # the average reading in a particular time bucket
 
 
 allowed_units = set(["C", "%", "lux", "kPa", "bool"])
@@ -54,7 +58,7 @@ class SensorReading(SQLModel, table=True):
     sensor: str = Field(index=True, default=None, primary_key=True)
     unit: str = Field(default=None)
     value: float = Field(default=None)
-    #method: str = Field(sa_column=Column(Enum(SampleMethod)), default=SampleMethod.raw)
+    # method: str = Field(sa_column=Column(Enum(SampleMethod)), default=SampleMethod.raw)
 
     recorded_timestamp: int = Field(default=None, primary_key=True)
     received_timestamp: int = Field(default=None)
@@ -122,6 +126,7 @@ class Sampler:
 
     @staticmethod
     def factory(method: SampleMethod):
+        print(f"SAMPLERS {Sampler.registry=}")
         return Sampler.registry[method]()
 
 
@@ -142,7 +147,7 @@ class Average(Sampler):
         return self.total / self.count
 
 
-Sampler.registry[Average.method] = Average
+Sampler.registry[Average.method.value] = Average
 
 
 class Minimum(Sampler):
@@ -159,7 +164,7 @@ class Minimum(Sampler):
         return self.minimum
 
 
-Sampler.registry[Minimum.method] = Minimum
+Sampler.registry[Minimum.method.value] = Minimum
 
 
 class Maximum(Sampler):
@@ -176,7 +181,7 @@ class Maximum(Sampler):
         return self.maximum
 
 
-Sampler.registry[Maximum.method] = Maximum
+Sampler.registry[Maximum.method.value] = Maximum
 
 
 class SampleBucket:
@@ -217,13 +222,13 @@ class SampleBucket:
         samples are named with <sensorname>_<unitname>_<samplemethod>
         """
         if self.sample_count == 0:
-            return None
+            return self.timestamp, None
 
         samples = {}
         for su, samplers in self.sensor_units.items():
             for s in samplers:
                 try:
-                    key = su + s.method  # e.g. sensor1_C_avg or sensor2_kpa_max
+                    key = su + "_"+ s.method.value  # e.g. sensor1_C_avg or sensor2_kpa_max
                     samples[key] = s.sample()
                 except ValueError as e:
                     pass  # Average of an empty bucket for example - just don't record any value
@@ -242,7 +247,10 @@ class BucketChain:
         self.start_timestamp = start_timestamp
         self.end_timestamp = end_timestamp
         time_range = end_timestamp - start_timestamp
+        print(f"Time range: {time_range=} {bucket_count=}")
         self.bucket_size = time_range / bucket_count
+        self.bucket_count = bucket_count
+        self.sample_count = 0
 
         for i in range(0, bucket_count):
             timestamp = start_timestamp + i * self.bucket_size
@@ -257,6 +265,7 @@ class BucketChain:
             # print(f"overfill {slot=} {bucket_count=} {r.recorded_timestamp=} {r.value=} {bucket_size=} {float_slot=} {time_range=}")
             slot = self.bucket_count - 1
         self.buckets[slot].add(r)
+        self.sample_count += 1 
 
     @classmethod
     def downsample(
@@ -286,23 +295,36 @@ class BucketChain:
         ]
 
         """
-        if len(data) == 0:
+        print(f"Sampled data {data=}")
+        if len(data) <= 1:
+            return []
+
+        try:
+            start_timestamp = data[0].recorded_timestamp
+            end_timestamp = data[-1].recorded_timestamp
+        except IndexError as e:
+            print(f"Not enough data for timestamps")
+            return []
+        if end_timestamp <= start_timestamp:
+            print(f"start and end timestamp clash {start_timestamp=} {end_timestamp=}")
             return []
 
         bucket_chain = cls(
-            start_timestamp=data[0].recorded_timestamp,
-            end_timestamp=data[-1].recorded_timestamp,
+            start_timestamp=start_timestamp,
+            end_timestamp=end_timestamp,
             bucket_count=bucket_count,
+            methods=sample_methods,
         )
 
         # pop each element of the raw data into the appropriate bucket.
         for r in data:
             bucket_chain.add_reading(r)
+        print(f"Bucket chain accepted {bucket_chain.sample_count} samples in {bucket_chain.bucket_count} buckets")
 
         data = []
         for b in bucket_chain.buckets:
             timestamp, bucket_samples = b.samples()
-            if len(bucket_samples) == 0:
+            if bucket_samples is None or  len(bucket_samples) == 0:
                 continue
             bucket_samples["_timestamp"] = timestamp
             data.append(bucket_samples)
@@ -331,11 +353,9 @@ class SensorSummary(BaseModel):
             session, start_timestamp, period, limit, units, sensors
         )
 
-        buckets = BucketChain(
-            start_timestamp,
-            start_timestamp + period,
-            sample_buckets,
-            sample_methods,
+        summary = cls(
+            downsampled_data=BucketChain.downsample(
+                alldata, sample_buckets, sample_methods
+            )
         )
-
-        return cls(downsampled_data=buckets.downsample(alldata, sample_buckets, sample_methods))
+        return summary
