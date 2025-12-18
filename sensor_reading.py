@@ -2,7 +2,16 @@
 Models and database for sensor readings
 """
 
-from sqlmodel import Field, Session, SQLModel, create_engine, select, DateTime, Enum, Column
+from sqlmodel import (
+    Field,
+    Session,
+    SQLModel,
+    create_engine,
+    select,
+    DateTime,
+    Enum,
+    Column,
+)
 from pydantic import BaseModel
 from datetime import datetime, timezone
 import time
@@ -45,7 +54,7 @@ class SensorReading(SQLModel, table=True):
     sensor: str = Field(index=True, default=None, primary_key=True)
     unit: str = Field(default=None)
     value: float = Field(default=None)
-    method: str = Field(sa_column=Column(Enum(SampleMethod)),default=SampleMethod.raw)
+    method: str = Field(sa_column=Column(Enum(SampleMethod)), default=SampleMethod.raw)
 
     recorded_timestamp: int = Field(default=None, primary_key=True)
     received_timestamp: int = Field(default=None)
@@ -76,7 +85,7 @@ class SensorReading(SQLModel, table=True):
         limit=1000,
         units: set[str] = set(["C"]),
         sensors: set = None,
-    ) -> list['SensorReading']:
+    ) -> list["SensorReading"]:
         if start_timestamp is None:
             start_timestamp = int(time.time()) - period
 
@@ -203,10 +212,10 @@ class SampleBucket:
 
         self.sample_count += 1
 
-    def samples(self) -> int, dict[str, float]:
+    def samples(self) -> tuple[int, dict[str, float]]:
         """Returns the bucket's timestamp and a dictionary with all samples.
-           samples are named with <sensorname>_<unitname>_<samplemethod>
-           """
+        samples are named with <sensorname>_<unitname>_<samplemethod>
+        """
         if self.sample_count == 0:
             return None
 
@@ -214,15 +223,21 @@ class SampleBucket:
         for su, samplers in self.sensor_units.items():
             for s in samplers:
                 try:
-                    key = su+s.method  # e.g. sensor1_C_avg or sensor2_kpa_max
+                    key = su + s.method  # e.g. sensor1_C_avg or sensor2_kpa_max
                     samples[key] = s.sample()
                 except ValueError as e:
                     pass  # Average of an empty bucket for example - just don't record any value
         return self.timestamp, samples
 
 
-class SensorSummary:
-    def __init__(self, start_timestamp: int, end_timestamp: int, bucket_count: int):
+class BucketChain:
+    def __init__(
+        self,
+        start_timestamp: int,
+        end_timestamp: int,
+        bucket_count: int,
+        methods: set[SampleMethod],
+    ):
         self.buckets = []
         self.start_timestamp = start_timestamp
         self.end_timestamp = end_timestamp
@@ -231,59 +246,71 @@ class SensorSummary:
 
         for i in range(0, bucket_count):
             timestamp = start_timestamp + i * self.bucket_size
-            b = SampleBucket(timestamp, sensor, unit, methods)
+            b = SampleBucket(timestamp, methods)
             self.buckets.append(b)
 
     def add_reading(self, r: SensorReading):
         float_slot = (r.recorded_timestamp - self.start_timestamp) / self.bucket_size
         slot = int(float_slot)
-        if  slot >= self.bucket_count:
+        if slot >= self.bucket_count:
             # The last data item will likely want to fit in an outer bucket. Shove it in the last.
-            #print(f"overfill {slot=} {bucket_count=} {r.recorded_timestamp=} {r.value=} {bucket_size=} {float_slot=} {time_range=}")
+            # print(f"overfill {slot=} {bucket_count=} {r.recorded_timestamp=} {r.value=} {bucket_size=} {float_slot=} {time_range=}")
             slot = self.bucket_count - 1
         self.buckets[slot].add(r)
 
     @classmethod
-    def downsample(cls,
-        data: list[SensorReading], methods: set[SampleMethod], bucket_count: int
+    def downsample(
+        cls, data: list[SensorReading], bucket_count: int, sample_methods: list[str]
     ) -> list[SensorReading]:
         """
         Creates a number of buckets, "puts" the data into them and then
-        samples the data to return a list of sensor readings.
+        samples the data to return a list of samples
         The input data is assumed to be ordered by increasing timestamps
 
-        returns a dictionary with the sample method as a key and the set
-        of samples for that method. e.g.
-        { "unit": "C", "data": [
-          { "avg" : 14.0, "min_": 12.0, "timestamp": 123 },
-          { "avg" : 15.0, "min_": 13.0, "timestamp": 124 },
-          { "avg" : 16.0, "min_": 15.0, "timestamp": 125 },
-          { "avg" :  6.0, "min_":  5.0, "timestamp": 123 },
-          { "avg" :  5.0, "min_":  1.0, "timestamp": 124 },
-          { "avg" :  6.0, "min_":  4.0, "timestamp": 125 }
-          ]
-        }
+        The format of this list is driven by how a popular graphing UI component
+        works. To accomodate multiple sensors, types of sensor and sampling methods
+        we create a list in which each item contains all the values that
+        relate to a particular time.
+
+        To distinquish each value they're named with their sensor, unit and sampling method.
+        e.g.
+        [
+          { "sensor1_C_avg" : 14.0, "sensor1_C_min_": 12.0, "timestamp": 123 },
+          { "sensor1_C_avg" : 15.0, "sensor1_C_min_": 13.0, "timestamp": 124 },
+        ]
+
+        With 2 sensors both recording averages this would be:
+        [
+          { "sensor1_C_avg" : 14.0, "sensor2_C_avg": 12.0, "timestamp": 123 },
+          { "sensor1_C_avg" : 15.0, "sensor2_C_min_": 13.0, "timestamp": 124 },
+        ]
 
         """
-        bucket_chain = cls( start_timestamp=data[0].recorded_timestamp,
-                            end_timestamp=data[-1].recorded_timestamp,
-                            bucket_count=bucket_count)
+        if len(data) == 0:
+            return []
 
-        sensor = data[0].sensor
-        unit = data[0].unit
+        bucket_chain = cls(
+            start_timestamp=data[0].recorded_timestamp,
+            end_timestamp=data[-1].recorded_timestamp,
+            bucket_count=bucket_count,
+        )
 
         # pop each element of the raw data into the appropriate bucket.
         for r in data:
             bucket_chain.add_reading(r)
 
         data = []
-        for b in self.bucket_chain:
+        for b in bucket_chain.buckets:
             timestamp, bucket_samples = b.samples()
             if len(bucket_samples) == 0:
                 continue
             bucket_samples["_timestamp"] = timestamp
             data.append(bucket_samples)
         return data
+
+
+class SensorSummary(BaseModel):
+    downsampled_data: list[dict]
 
     @classmethod
     def sample(
@@ -292,17 +319,23 @@ class SensorSummary:
         start_timestamp: int = None,
         period: int = 600,
         limit=1000,
+        sensors: set = None,
         units: set[str] = set(["C"]),
         sample_methods: set[str] = set(["avg"]),
-        sensors: set = None,
-        sample_buckets=None,
-        sample_type=None,
-    ) -> 'SensorSummary':
+        sample_buckets=10,
+    ) -> "SensorSummary":
+        if start_timestamp is None:
+            start_timestamp = datetime.now().timestamp()
 
         alldata = SensorReading.fetch(
-                session, start_timestamp, period, limit, units, sensors)
+            session, start_timestamp, period, limit, units, sensors
+        )
 
-        summary = cls(start_timestamp, start_timestamp + period, sample_methods, bucket_count)
+        buckets = BucketChain(
+            start_timestamp,
+            start_timestamp + period,
+            sample_buckets,
+            sample_methods,
+        )
 
-        downsampled_data = self.downsample(alldata, methods)
-        return alldata
+        return cls(downsampled_data=buckets.downsample(alldata, sample_buckets, sample_methods))

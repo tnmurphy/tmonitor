@@ -41,7 +41,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
-from sensor_reading import SensorReading, SensorReadingPayload
+from sensor_reading import SensorReading, SensorReadingPayload, SensorSummary
 
 from typing import List
 from http import HTTPStatus
@@ -120,6 +120,7 @@ def generic_exception_handler(request: Request, exc: Exception):
         headers={"X-Correlation-Id": request.state.correlator},
     )
 
+
 @app.post("/sense", response_class=JSONResponse)
 def sensor_event(request: Request, readings: List[SensorReadingPayload]):
     """
@@ -146,9 +147,14 @@ def sensor_event(request: Request, readings: List[SensorReadingPayload]):
     }
     return JSONResponse(response, status_code=200)
 
+
 @app.get("/read", response_class=JSONResponse)
 def get_reading(
-        request: Request, start_timestamp: int = None, period: int = 600, limit=1000, units='C'
+    request: Request,
+    start_timestamp: int = None,
+    period: int = 600,
+    limit=1000,
+    units="C",
 ) -> list[SensorReading]:
     """
     Returns a list of readings.
@@ -156,34 +162,63 @@ def get_reading(
     request.state.logger.debug(f"/read {limit=} {period=}")
     rlist = []
 
-    units_list = set([ u.strip() for u in units.split(',') ])
+    units_list = set([u.strip() for u in units.split(",")])
     with Session(request.app.state.engine) as session:
         results = SensorReading.fetch_readings(
-                session, start_timestamp=start_timestamp, period=period, limit=limit, units=units_list
+            session,
+            start_timestamp=start_timestamp,
+            period=period,
+            limit=limit,
+            units=units_list,
         )
-        request.state.logger.debug(f"Returning for {start_timestamp=} and period {period=} returning  count: {len(results)}\n {results=}")
+        request.state.logger.debug(
+            f"Returning for {start_timestamp=} and period {period=} returning  count: {len(results)}\n {results=}"
+        )
         rlist = [r.model_dump() for r in results]
         response = {"readings": rlist, "current_timestamp": int(time.time())}
 
     return JSONResponse(response, status_code=200)
 
+
 @app.get("/sample", response_class=JSONResponse)
-def get_reading(
-        request: Request, start_timestamp: int = None, period: int = 600, limit=1000, units='C'
-) -> list[SampleBucket]:
+def get_sample(
+    request: Request,
+    start_timestamp: int = None,
+    period: int = 600,
+    limit=1000,
+    sensors: str = None,
+    units: str = "C",
+    sample_methods: str = "avg",
+    sample_buckets: int = 10,
+) -> SensorSummary:
     """
     Returns a list of readings.
     """
     request.state.logger.debug(f"/read {limit=} {period=}")
     rlist = []
 
-    units_list = set([ u.strip() for u in units.split(',') ])
+    units_set = set([u.strip() for u in units.split(",")])
+    if sensors is not None:
+        sensors_set = set([u.strip() for u in sensors.split(",")])
+    else:
+        sensors_set = None
+
+    sample_methods_set = set([u.strip() for u in sample_methods.split(",")])
+
     with Session(request.app.state.engine) as session:
-        results = SensorReading.sample(
-                session, start_timestamp=start_timestamp, period=period, limit=limit, units=units_list
+        summary = SensorSummary.sample(
+            session,
+            start_timestamp=start_timestamp,
+            period=period,
+            limit=limit,
+            sensors=sensors_set,
+            units=units_set,
+            sample_methods=sample_methods_set,
         )
-        request.state.logger.debug(f"Returning for {start_timestamp=} and period {period=} returning  count: {len(results)}\n {results=}")
-        rlist = [r.model_dump() for r in results]
-        response = {"readings": rlist, "current_timestamp": int(time.time())}
+        result_js = summary.model_dump()
+        request.state.logger.debug(
+            f"Returning for {start_timestamp=} and period {period=} returning  count: {len(result_js)}\n {result_js=}"
+        )
+        response = {"readings": result_js, "current_timestamp": int(time.time())}
 
     return JSONResponse(response, status_code=200)
