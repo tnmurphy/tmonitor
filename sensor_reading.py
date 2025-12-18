@@ -54,7 +54,7 @@ class SensorReading(SQLModel, table=True):
     sensor: str = Field(index=True, default=None, primary_key=True)
     unit: str = Field(default=None)
     value: float = Field(default=None)
-    method: str = Field(sa_column=Column(Enum(SampleMethod)), default=SampleMethod.raw)
+    #method: str = Field(sa_column=Column(Enum(SampleMethod)), default=SampleMethod.raw)
 
     recorded_timestamp: int = Field(default=None, primary_key=True)
     received_timestamp: int = Field(default=None)

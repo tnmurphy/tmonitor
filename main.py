@@ -164,7 +164,7 @@ def get_reading(
 
     units_list = set([u.strip() for u in units.split(",")])
     with Session(request.app.state.engine) as session:
-        results = SensorReading.fetch_readings(
+        results = SensorReading.fetch(
             session,
             start_timestamp=start_timestamp,
             period=period,
@@ -217,7 +217,7 @@ def get_sample(
         )
         result_js = summary.model_dump()
         request.state.logger.debug(
-            f"Returning for {start_timestamp=} and period {period=} returning  count: {len(result_js)}\n {result_js=}"
+            f"Returning for {start_timestamp=} and {period=}  count: {len(result_js)}\n {result_js=}"
         )
         response = {"readings": result_js, "current_timestamp": int(time.time())}
 
