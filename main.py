@@ -219,6 +219,5 @@ def get_sample(
         request.state.logger.debug(
             f"Returning for {start_timestamp=} and {period=}  count: {len(result_js)}\n {result_js=}"
         )
-        response = {"readings": result_js, "current_timestamp": int(time.time())}
 
-    return JSONResponse(response, status_code=200)
+    return JSONResponse(result_js, status_code=200)

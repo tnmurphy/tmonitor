@@ -126,7 +126,6 @@ class Sampler:
 
     @staticmethod
     def factory(method: SampleMethod):
-        print(f"SAMPLERS {Sampler.registry=}")
         return Sampler.registry[method]()
 
 
@@ -253,7 +252,7 @@ class BucketChain:
         self.sample_count = 0
 
         for i in range(0, bucket_count):
-            timestamp = start_timestamp + i * self.bucket_size
+            timestamp = int(start_timestamp + i * self.bucket_size)
             b = SampleBucket(timestamp, methods)
             self.buckets.append(b)
 
@@ -295,7 +294,7 @@ class BucketChain:
         ]
 
         """
-        print(f"Sampled data {data=}")
+        print(f"Sampled data count {len(data)}")
         if len(data) <= 1:
             return []
 
