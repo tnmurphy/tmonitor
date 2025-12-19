@@ -206,7 +206,7 @@ def get_sample(
     sample_methods_set = set([u.strip() for u in sample_methods.split(",")])
 
     with Session(request.app.state.engine) as session:
-        summary = SensorSummary.sample(
+        summary = SensorSample.sample(
             session,
             start_timestamp=start_timestamp,
             period=period,
@@ -219,5 +219,16 @@ def get_sample(
         request.state.logger.debug(
             f"Returning for {start_timestamp=} and {period=}  count: {len(result_js)}\n {result_js=}"
         )
+
+    return JSONResponse(result_js, status_code=200)
+
+
+@app.get("/sensors", response_class=JSONResponse)
+def get_sensors(
+    request: Request,
+    limit=1000,
+) -> list[str]:
+    with Session(request.app.state.engine) as session:
+        result_js = SensorReading.sensorlist(session)
 
     return JSONResponse(result_js, status_code=200)

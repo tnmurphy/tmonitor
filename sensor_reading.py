@@ -81,6 +81,15 @@ class SensorReading(SQLModel, table=True):
             raise ValueError(f"mismatched sensor {sensor} <> {self.sensor}")
 
     @classmethod
+    def sensorlist(
+        cls,
+        session: Session,
+    ) -> list[str]:
+        sel = select(SensorReading.sensor).distinct()
+        alldata = session.scalars(sel).all()
+        return alldata
+
+    @classmethod
     def fetch(
         cls,
         session: Session,
@@ -227,7 +236,9 @@ class SampleBucket:
         for su, samplers in self.sensor_units.items():
             for s in samplers:
                 try:
-                    key = su + "_"+ s.method.value  # e.g. sensor1_C_avg or sensor2_kpa_max
+                    key = (
+                        su + "_" + s.method.value
+                    )  # e.g. sensor1_C_avg or sensor2_kpa_max
                     samples[key] = s.sample()
                 except ValueError as e:
                     pass  # Average of an empty bucket for example - just don't record any value
@@ -264,7 +275,7 @@ class BucketChain:
             # print(f"overfill {slot=} {bucket_count=} {r.recorded_timestamp=} {r.value=} {bucket_size=} {float_slot=} {time_range=}")
             slot = self.bucket_count - 1
         self.buckets[slot].add(r)
-        self.sample_count += 1 
+        self.sample_count += 1
 
     @classmethod
     def downsample(
@@ -318,14 +329,16 @@ class BucketChain:
         # pop each element of the raw data into the appropriate bucket.
         for r in data:
             bucket_chain.add_reading(r)
-        print(f"Bucket chain accepted {bucket_chain.sample_count} samples in {bucket_chain.bucket_count} buckets")
+        print(
+            f"Bucket chain accepted {bucket_chain.sample_count} samples in {bucket_chain.bucket_count} buckets"
+        )
 
         data = []
         for b in bucket_chain.buckets:
             timestamp, bucket_samples = b.samples()
-            if bucket_samples is None or  len(bucket_samples) == 0:
+            if bucket_samples is None or len(bucket_samples) == 0:
                 continue
-            bucket_samples["_timestamp"] = timestamp
+            bucket_samples["timestamp"] = timestamp
             data.append(bucket_samples)
         return data
 
