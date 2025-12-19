@@ -142,7 +142,7 @@ function App() {
     if (!selectedSensor) return;
 
     fetch(
-`${API_URL}/sample?sensor=${selectedSensor}&start_timestamp=${startTimestamp}&period=${currentView.period}&units=C&sample_buckets=${currentView.sampleBuckets}&sample_methods=${currentView.sampleMethods}&limit=3000`,
+`${API_URL}/sample?sensors=${selectedSensor}&start_timestamp=${startTimestamp}&period=${currentView.period}&units=C&sample_buckets=${currentView.sampleBuckets}&sample_methods=${currentView.sampleMethods}&limit=3000`,
       { mode: "cors" }
     )
       .then((response) => response.json())
@@ -271,6 +271,9 @@ function App() {
       </span>
       <span style={{ margin: "10px 15px" }}>
         Now: {moment(Date.now()).format()}
+      </span>
+      <span style={{ margin: "10px 15px" }}>
+        Selected sensor: {selectedSensor}
       </span>
     </div>
   );
