@@ -1,10 +1,3 @@
-// The following code displays a graph of temperature over time and allows the user to move
-// that view backwards and forwards by an amount which is less than the total period shown.
-// e.g. if the user chooses to show a day, then they are able to move forwards or backwards
-// in increments of an hour.
-// The data is fetched from a URL whenever the user chooses to move the view to a different start time
-// or chooses to effectively zoom in or out by selecting a different period.
-
 import React, { useState, useEffect } from "react";
 import {
   LineChart,
@@ -27,12 +20,16 @@ class View {
     fastMovePeriod,
     tickFormatter,
     edgeFormatter,
+    sampleBuckets,
+    sampleMethods
   ) {
     this.period = period;
     this.movePeriod = movePeriod;
     this.fastMovePeriod = fastMovePeriod;
     this.tickFormatter = tickFormatter;
     this.edgeFormatter = edgeFormatter;
+    this.sampleBuckets = sampleBuckets;
+    this.sampleMethods = sampleMethods.split(",");
   }
 }
 
@@ -42,6 +39,8 @@ const hourView = new View(
   3600, // 1 hour in seconds
   (ts) => moment(ts * 1000).format("mm"), // Show minutes
   (ts) => moment(ts * 1000).format("hh:mm"), // Show minutes
+  6, // 5 minute intervals
+  "avg" // Only average for hour view
 );
 
 const dayView = new View(
@@ -50,25 +49,31 @@ const dayView = new View(
   86400, // 1 day in seconds
   (ts) => moment(ts * 1000).format("HH:mm"), // Show hours and minutes
   (ts) => moment(ts * 1000).format("HH:mm Do"), // Show day and hour at the edges of the axis
+  48, // 30 minute intervals
+  "min,max,avg" // Min, max and average for day view
 );
 
 const weekView = new View(
   604800, // 1 week in seconds
   86400, // 1 day in seconds
   604800, // 1 week in seconds
-  (ts) => moment(ts * 1000).format("HH Do"), // Show day of month and hour
-  (ts) => moment(ts * 1000).format("Do MM"), // Show Month and day at the left and right edges
+  (ts) => moment(ts * 1000).format("HH:mm"), // Show day of month and hour
+  (ts) => moment(ts * 1000).format("Do MMM"), // Show Month and day at the left and right edges
+  7, // One point per day
+  "min,max,avg" // Min, max and average for week view
 );
 
 function App() {
   const [data, setData] = useState([]);
   const [startTimestamp, setStartTimestamp] = useState(
-    Math.floor(Date.now() / 1000 - 300),
+    Math.floor(Date.now() / 1000 - 3600)
   );
   const [endTimestamp, setEndTimestamp] = useState(
-    Math.floor(Date.now() / 1000),
+    Math.floor(Date.now() / 1000)
   );
   const [currentView, setCurrentView] = useState(hourView);
+  const [sensors, setSensors] = useState([]);
+  const [selectedSensor, setSelectedSensor] = useState(null);
 
   let CustomizedAxisTick = ({ x, y, payload, index, data }) => {
     let tick = "";
@@ -109,7 +114,11 @@ function App() {
           }}
         >
           <p>{formattedDate}</p>
-          <p>{`${payload[0].payload.value} ${payload[0].payload.unit}`}</p>
+          {payload.map((item) => (
+            <p key={item.name}>
+              {item.name}: {item.value} {item.unit}
+            </p>
+          ))}
         </div>
       );
     }
@@ -117,29 +126,39 @@ function App() {
   };
 
   useEffect(() => {
-    fetch(
-      API_URL +
-        `/read?start_timestamp=${startTimestamp}&period=${currentView.period}&units=C`,
-      { mode: "cors" },
-    )
+    // First fetch to get available sensors
+    fetch(`${API_URL}/sensors`, { mode: "cors" })
       .then((response) => response.json())
       .then((jsonData) => {
-        const formattedData = jsonData.readings
-          .filter((item) => item.unit === "C")
-          .map((item) => ({
-            timestamp: item.recorded_timestamp,
-            time: new Date(item.recorded_timestamp * 1000).toLocaleString(),
-            unit: item.unit,
-            value: item.value,
-          }));
-        setData(formattedData);
-        if (formattedData.length > 0) {
-          let lastDate = formattedData.at(-1)["timestamp"];
+        setSensors(jsonData);
+        if (jsonData.length > 0 && !selectedSensor) {
+          setSelectedSensor(jsonData[0]);
+        }
+      })
+      .catch((error) => console.error("Error fetching sensors:", error));
+  }, [selectedSensor]);
+
+  useEffect(() => {
+    if (!selectedSensor) return;
+
+    fetch(
+`${API_URL}/sample?sensor=${selectedSensor}&start_timestamp=${startTimestamp}&period=${currentView.period}&units=C&sample_buckets=${currentView.sampleBuckets}&sample_methods=${currentView.sampleMethods}&limit=3000`,
+      { mode: "cors" }
+    )
+      .then((response) => response.json())
+      .then((sensor_data) =>  {
+        let downsampled_data = sensor_data.downsampled_data
+        setData(downsampled_data);
+        console.log("DOWNSAMPLED: " + downsampled_data.length + " sensor samples")
+        console.log("EXPECTING: " + currentView.sampleBuckets + " sensor samples")
+
+        if (downsampled_data.length > 0) {
+          let lastDate = downsampled_data.at(-1)["timestamp"];
           setEndTimestamp(lastDate);
         }
       })
       .catch((error) => console.error("Error fetching data:", error));
-  }, [startTimestamp, currentView.period]);
+  }, [startTimestamp, currentView, selectedSensor]);
 
   const moveBackward = () => {
     setStartTimestamp((prev) => Math.max(prev - currentView.movePeriod, 0));
@@ -160,8 +179,9 @@ function App() {
   const setToNow = () => setStartTimestamp(Math.floor(Date.now() / 1000));
 
   return (
-    <div style={{ width: "95%", height: 400 }}>
-      <h1>Greenhouse Temperature</h1>
+    <div style={{ width: "95%", height: 600 }}>
+      <h1>Greenhouse Monitoring</h1>
+
       <div style={{ marginBottom: "16px" }}>
         <button onClick={moveFastBackward}>FastBack</button>
         <button onClick={moveBackward}>Back</button>
@@ -169,6 +189,7 @@ function App() {
         <button onClick={moveFastForward}>Fast Forward</button>
         <button onClick={setToNow}>Now</button>
       </div>
+
       <div style={{ marginBottom: "16px" }}>
         <button
           onClick={() => setCurrentView(hourView)}
@@ -189,6 +210,22 @@ function App() {
           Week
         </button>
       </div>
+
+      <div style={{ marginBottom: "16px" }}>
+        <label>Select Sensor: </label>
+        <select
+          value={selectedSensor || ''}
+          onChange={(e) => setSelectedSensor(e.target.value)}
+          style={{ marginLeft: "10px" }}
+        >
+          {sensors.map((sensor) => (
+            <option key={sensor} value={sensor}>
+              {sensor}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <ResponsiveContainer>
         <LineChart
           responsive
@@ -208,14 +245,27 @@ function App() {
           <YAxis />
           <Tooltip content={<CustomTooltip />} />
           <Legend verticalAlign="top" height={64} />
-          <Line
-            type="monotone"
-            dataKey="value"
-            stroke="#8884d8"
-            activeDot={{ r: 8 }}
-          />
+
+          {/* Dynamically create lines for each value */}
+          {data.length > 0 && (
+            <>
+              {Object.keys(data[0])
+                .filter(key => key !== "timestamp")
+                .map(dataseries => (
+                <Line
+                  key={dataseries}
+                  type="monotone"
+                  dataKey={dataseries}
+                  stroke={getColorForSeries(dataseries)}
+                  name={prettyDataSeriesName(dataseries)}
+                  activeDot={{ r: 8 }}
+                />
+              ))}
+            </>
+          )}
         </LineChart>
       </ResponsiveContainer>
+
       <span style={{ margin: "10px 15px" }}>
         View starts at: {new Date(startTimestamp * 1000).toLocaleString()}
       </span>
@@ -226,4 +276,35 @@ function App() {
   );
 }
 
+function prettyDataSeriesName(series) {
+  const [sensor,unit,method] = series.split("_")
+
+  const measurements = {
+    C: 'temperature, C',
+    kPa: 'pressure, kPa',
+    lux: 'light, lux',
+    presence: "human presence"
+  };
+
+  const m = measurements[unit] || '?';
+  
+  return method + " " + m + "from " + sensor  
+}
+
+// Helper function to assign colors to different sample methods
+function getColorForSeries(series) {
+  const [sensor,_,method] = series.split("_")
+  const colors = {
+    avg: '#8884d8',
+    min: '#ff0000',
+    max: '#11aa11'
+  };
+  
+  let col = colors[method] || '#8884d8';
+
+  console.debug("COLOUR for "+method+" from "+sensor+" is "+col)
+  return col
+}
+
 export default App;
+
