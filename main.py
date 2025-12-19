@@ -57,6 +57,9 @@ origins = [
     "https://localhost.tiangolo.com",
     "http://localhost",
     "http://localhost:8080",
+    "http://localhost:3000",
+    "http://rhodes.local",
+    "http://rhodes.local:3000",
     "http://rhodes.local:5000",
     "http://chivero:5000",
     "*",
@@ -194,7 +197,7 @@ def get_sample(
     """
     Returns a list of readings.
     """
-    request.state.logger.debug(f"/read {limit=} {period=}")
+    request.state.logger.debug(f"/sample {limit=} {period=} {sample_buckets=} {sample_methods=}")
     rlist = []
 
     units_set = set([u.strip() for u in units.split(",")])
@@ -206,7 +209,7 @@ def get_sample(
     sample_methods_set = set([u.strip() for u in sample_methods.split(",")])
 
     with Session(request.app.state.engine) as session:
-        summary = SensorSample.sample(
+        summary = SensorSummary.sample(
             session,
             start_timestamp=start_timestamp,
             period=period,
@@ -214,6 +217,7 @@ def get_sample(
             sensors=sensors_set,
             units=units_set,
             sample_methods=sample_methods_set,
+            sample_buckets=sample_buckets
         )
         result_js = summary.model_dump()
         request.state.logger.debug(
