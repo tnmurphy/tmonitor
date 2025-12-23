@@ -41,7 +41,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
-from sensor_reading import SensorReading, SensorReadingPayload, SensorSummary
+from sensor_reading import SensorReading, SensorReadingPayload, SensorSummary, SampleMethod
 
 from typing import List
 from http import HTTPStatus
@@ -206,7 +206,7 @@ def get_sample(
     else:
         sensors_set = None
 
-    sample_methods_set = set([u.strip() for u in sample_methods.split(",")])
+    sample_methods_set = SampleMethod.from_str(sample_methods)
 
     with Session(request.app.state.engine) as session:
         summary = SensorSummary.sample(
@@ -224,7 +224,8 @@ def get_sample(
             f"Returning for {start_timestamp=} and {period=}  count: {len(result_js)}\n {result_js=}"
         )
 
-    return JSONResponse(result_js, status_code=200)
+    #return JSONResponse(result_js, status_code=200)
+    return summary
 
 
 @app.get("/sensors", response_class=JSONResponse)

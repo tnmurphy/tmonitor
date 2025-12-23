@@ -36,7 +36,7 @@ class TestMain():
         """ Check that we see the expected endpoints. """
         app = main.app
 
-        expected_paths = set(["/sense", "/read"])
+        expected_paths = set(["/sense", "/read", "/sample", "/sensors"])
         paths = set([r.path for r in app.routes if type(r) is APIRoute])
         sd = paths.symmetric_difference(expected_paths)
         print(f"test_force_error: added or removed endpoints: {sd}")

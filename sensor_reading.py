@@ -12,28 +12,124 @@ from sqlmodel import (
     Enum,
     Column,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from datetime import datetime, timezone
 import time
-import enum
-
-
-class SampleMethod(enum.Enum):
-    """how the reading came about - either raw from a sensor or an average or other selection from raw
-    readings"""
-
-    raw = "raw"  # a reading straight from  a sensor
-    max_ = (
-        "max"  # the maximum reading from a set of raw readings in a particular bucket
-    )
-    min_ = (
-        "min"  # the minimum reading from a set of raw readings in a particular bucket
-    )
-
-    avg = "avg"  # the average reading in a particular time bucket
+from enum import Enum
 
 
 allowed_units = set(["C", "%", "lux", "kPa", "bool"])
+
+class SampleMethod:
+    pass
+
+
+class Sampler:
+    """Abstract base class for samplers which have values added to them and return some sort
+       of summary of those values such as an average or maximum.
+    """
+    registry = {}
+
+    def __init__(self):
+        pass
+
+    def add(self, value: float):
+        pass
+
+    def sample(self) -> float:
+        return 0.0
+
+    @staticmethod
+    def factory(method: SampleMethod):
+        return Sampler.registry[method.value]()
+
+
+class Average(Sampler):
+    """ Keep a total and count of all values added and return the average when sampled """
+    method_name = "AVG"
+    method_value = "avg"
+
+    def __init__(self):
+        self.total = 0.0
+        self.count = 0
+
+    def add(self, value: float):
+        self.total += value
+        self.count += 1
+
+    def sample(self) -> float:
+        if self.count <= 0:
+            raise ValueError("nothing to average")
+        return self.total / self.count
+
+
+Sampler.registry[Average.method_value] = Average
+
+
+class Minimum(Sampler):
+    """Retain the smallest value added and return that as the sample """
+    method_name = "MIN_"
+    method_value = "min"
+
+    def __init__(self):
+        self.minimum = None
+
+    def add(self, value: float):
+        if self.minimum is None or value < self.minimum:
+            self.minimum = value
+
+    def sample(self) -> float:
+        return self.minimum
+
+
+Sampler.registry[Minimum.method_value] = Minimum
+
+
+class Maximum(Sampler):
+    """Retain the largest value added and return that as the sample """
+    method_name = "MAX_"
+    method_value = "max"
+
+    def __init__(self):
+        self.maximum = None  # practical minimum
+
+    def add(self, value: float):
+        if self.maximum is None or value > self.maximum:
+            self.maximum = value
+
+    def sample(self) -> float:
+        return self.maximum
+
+Sampler.registry[Maximum.method_value] = Maximum
+
+class Raw(Sampler):
+    """ Just pick the first data item seen"""
+    method_name = "RAW"
+    method_value = "raw"
+
+    def __init__(self):
+        self.chosen = None  # practical minimum
+
+    def add(self, value: float):
+        if self.chosen is None:
+            self.chosen = value
+
+    def sample(self) -> float:
+        return self.chosen
+
+
+Sampler.registry[Raw.method_value] = Raw
+
+# Build up the enum from the classes that were declared
+samps = [(v.method_name,k) for k,v in Sampler.registry.items()]
+SampleMethod = Enum('SampleMethod', samps)
+def sample_method_from_str(s: str) -> set[SampleMethod]:
+    strmethods = [u.strip() for u in s.split(",")]
+    methods = { SampleMethod(m) for m in strmethods }
+    return methods
+
+SampleMethod.from_str = sample_method_from_str
+
 
 
 class SensorReadingPayload(BaseModel):
@@ -48,17 +144,22 @@ class SensorReadingPayload(BaseModel):
     value: float
     recorded_timestamp: int
 
+    @field_validator('unit')
+    @classmethod
+    def unit_must_be_in_allowed(cls, u: str):
+        if not u in allowed_units:
+            raise ValueError(f"unknown unit: {u}")
+        return u
+
 
 class SensorReading(SQLModel, table=True):
     """
     A reading from  a sensor as stored in the database.
-
     """
 
     sensor: str = Field(index=True, default=None, primary_key=True)
-    unit: str = Field(default=None)
+    unit: str = Field(default=None, primary_key=True)
     value: float = Field(default=None)
-    # method: str = Field(sa_column=Column(Enum(SampleMethod)), default=SampleMethod.raw)
 
     recorded_timestamp: int = Field(default=None, primary_key=True)
     received_timestamp: int = Field(default=None)
@@ -97,7 +198,7 @@ class SensorReading(SQLModel, table=True):
         period: int = 600,
         limit=1000,
         units: set[str] = set(["C"]),
-        sensors: set = None,
+        sensors: set[str] | None = None,
     ) -> list["SensorReading"]:
         if start_timestamp is None:
             start_timestamp = int(time.time()) - period
@@ -110,8 +211,10 @@ class SensorReading(SQLModel, table=True):
         if sensors is not None:
             sel = sel.where(SensorReading.sensor.in_(sensors))
 
+        end_timestamp = start_timestamp + period
+
         sel = sel.where(SensorReading.received_timestamp > start_timestamp)
-        sel = sel.where(SensorReading.received_timestamp <= start_timestamp + period)
+        sel = sel.where(SensorReading.received_timestamp <= end_timestamp)
         sel = sel.where(SensorReading.unit.in_(units))
         sel = sel.order_by(SensorReading.received_timestamp)
         sel = sel.limit(limit)
@@ -119,77 +222,6 @@ class SensorReading(SQLModel, table=True):
         alldata = session.scalars(sel).all()
 
         return alldata
-
-
-class Sampler:
-    registry = {}
-
-    def __init__(self):
-        pass
-
-    def add(self, value: float):
-        pass
-
-    def sample(self) -> float:
-        return 0.0
-
-    @staticmethod
-    def factory(method: SampleMethod):
-        return Sampler.registry[method]()
-
-
-class Average(Sampler):
-    method = SampleMethod.avg
-
-    def __init__(self):
-        self.total = 0.0
-        self.count = 0
-
-    def add(self, value: float):
-        self.total += value
-        self.count += 1
-
-    def sample(self) -> float:
-        if self.count <= 0:
-            raise ValueError("nothing to average")
-        return self.total / self.count
-
-
-Sampler.registry[Average.method.value] = Average
-
-
-class Minimum(Sampler):
-    method = SampleMethod.min_
-
-    def __init__(self):
-        self.minimum = None
-
-    def add(self, value: float):
-        if self.minimum is None or value < self.minimum:
-            self.minimum = value
-
-    def sample(self) -> float:
-        return self.minimum
-
-
-Sampler.registry[Minimum.method.value] = Minimum
-
-
-class Maximum(Sampler):
-    method = SampleMethod.max_
-
-    def __init__(self):
-        self.maximum = None  # practical minimum
-
-    def add(self, value: float):
-        if self.maximum is None or value > self.maximum:
-            self.maximum = value
-
-    def sample(self) -> float:
-        return self.maximum
-
-
-Sampler.registry[Maximum.method.value] = Maximum
 
 
 class SampleBucket:
@@ -210,7 +242,7 @@ class SampleBucket:
     def add(self, r: SensorReading):
         if r.recorded_timestamp < self.timestamp:
             raise ValueError(
-                f"adding values from outside the bucket  {r.recorded_timestamp} to sample bucket for {self.sensor}"
+                f"adding values from outside the bucket  {r.recorded_timestamp} to sample bucket "
             )
         su = f"{r.sensor}_{r.unit}"
 
@@ -230,14 +262,14 @@ class SampleBucket:
         samples are named with <sensorname>_<unitname>_<samplemethod>
         """
         if self.sample_count == 0:
-            return self.timestamp, None
+            return self.timestamp, {}
 
         samples = {}
         for su, samplers in self.sensor_units.items():
             for s in samplers:
                 try:
                     key = (
-                        su + "_" + s.method.value
+                        su + "_" + s.method_value
                     )  # e.g. sensor1_C_avg or sensor2_kpa_max
                     samples[key] = s.sample()
                 except ValueError as e:
@@ -246,6 +278,7 @@ class SampleBucket:
 
 
 class BucketChain:
+    """ A string of buckets that are adjacent in time from first to next """
     def __init__(
         self,
         start_timestamp: int,
@@ -257,7 +290,6 @@ class BucketChain:
         self.start_timestamp = start_timestamp
         self.end_timestamp = end_timestamp
         time_range = end_timestamp - start_timestamp
-        print(f"Time range: {time_range=} {bucket_count=}")
         self.bucket_size = time_range / bucket_count
         self.bucket_count = bucket_count
         self.sample_count = 0
@@ -279,19 +311,21 @@ class BucketChain:
 
     @classmethod
     def downsample(
-        cls, data: list[SensorReading], bucket_count: int, sample_methods: list[str]
-    ) -> list[SensorReading]:
+        cls, data: list[SensorReading], bucket_count: int, sample_methods: set[SampleMethod]
+    ) -> list[dict[str, float]]:
         """
-        Creates a number of buckets, "puts" the data into them and then
-        samples the data to return a list of samples
+        Creates a number of buckets which cover the time period of
+        the data from the first to last reading and "puts" the data
+        into them.  Then samples the data to return a list of samples.
         The input data is assumed to be ordered by increasing timestamps
 
-        The format of this list is driven by how a popular graphing UI component
-        works. To accomodate multiple sensors, types of sensor and sampling methods
-        we create a list in which each item contains all the values that
-        relate to a particular time.
+        The format of this list is driven by how a popular graphing UI
+        component works. To accomodate multiple sensors, types of sensor
+        and sampling methods we create a list in which each item contains
+        all the values that relate to a particular time.
 
-        To distinquish each value they're named with their sensor, unit and sampling method.
+        To distinquish each value they're named with their sensor,
+        unit and sampling method.
         e.g.
         [
           { "sensor1_C_avg" : 14.0, "sensor1_C_min_": 12.0, "timestamp": 123 },
@@ -305,18 +339,15 @@ class BucketChain:
         ]
 
         """
-        print(f"Sampled data count {len(data)}")
-        if len(data) <= 1:
+        if len(data) < 1:
             return []
 
         try:
             start_timestamp = data[0].recorded_timestamp
-            end_timestamp = data[-1].recorded_timestamp
-        except IndexError as e:
-            print(f"Not enough data for timestamps")
-            return []
-        if end_timestamp <= start_timestamp:
-            print(f"start and end timestamp clash {start_timestamp=} {end_timestamp=}")
+            # +1 ensures we have a range that's >0 and the 
+            # last item will awlays be put in the last bucket
+            end_timestamp = data[-1].recorded_timestamp+1
+        except IndexError:
             return []
 
         bucket_chain = cls(
@@ -329,18 +360,15 @@ class BucketChain:
         # pop each element of the raw data into the appropriate bucket.
         for r in data:
             bucket_chain.add_reading(r)
-        print(
-            f"Bucket chain accepted {bucket_chain.sample_count} samples in {bucket_chain.bucket_count} buckets"
-        )
 
-        data = []
+        downsampled_data = []
         for b in bucket_chain.buckets:
             timestamp, bucket_samples = b.samples()
             if bucket_samples is None or len(bucket_samples) == 0:
                 continue
             bucket_samples["timestamp"] = timestamp
-            data.append(bucket_samples)
-        return data
+            downsampled_data.append(bucket_samples)
+        return downsampled_data
 
 
 class SensorSummary(BaseModel):
@@ -350,16 +378,16 @@ class SensorSummary(BaseModel):
     def sample(
         cls,
         session: Session,
-        start_timestamp: int = None,
+        start_timestamp: int | None = None,
         period: int = 600,
         limit=1000,
-        sensors: set = None,
+        sensors: set[str] | None = None,
         units: set[str] = set(["C"]),
-        sample_methods: set[str] = set(["avg"]),
+        sample_methods: set[SampleMethod] = set([SampleMethod.AVG]),
         sample_buckets=10,
     ) -> "SensorSummary":
         if start_timestamp is None:
-            start_timestamp = datetime.now().timestamp()
+            start_timestamp = int(datetime.now().timestamp())
 
         alldata = SensorReading.fetch(
             session, start_timestamp, period, limit, units, sensors
