@@ -15,6 +15,7 @@ const API_URL = "http://chivero:5000";
 
 class View {
   constructor(
+    periodName, 
     period,
     movePeriod,
     fastMovePeriod,
@@ -23,6 +24,7 @@ class View {
     sampleBuckets,
     sampleMethods
   ) {
+    this.periodName = periodName
     this.period = period;
     this.movePeriod = movePeriod;
     this.fastMovePeriod = fastMovePeriod;
@@ -30,20 +32,23 @@ class View {
     this.edgeFormatter = edgeFormatter;
     this.sampleBuckets = sampleBuckets;
     this.sampleMethods = sampleMethods.split(",");
+    
   }
 }
 
 const hourView = new View(
+  "hour",
   3600, // 1 hour in seconds
   300, // 5 minutes in seconds
   3600, // 1 hour in seconds
   (ts) => moment(ts * 1000).format("mm"), // Show minutes
-  (ts) => moment(ts * 1000).format("hh:mm"), // Show minutes
+  (ts) => moment(ts * 1000).format("HH:mm"), // Show minutes
   6, // 5 minute intervals
   "avg" // Only average for hour view
 );
 
 const dayView = new View(
+  "day",
   86400, // 1 day in seconds
   3600, // 1 hour in seconds
   86400, // 1 day in seconds
@@ -54,24 +59,70 @@ const dayView = new View(
 );
 
 const weekView = new View(
+  "week",
   604800, // 1 week in seconds
   86400, // 1 day in seconds
   604800, // 1 week in seconds
-  (ts) => moment(ts * 1000).format("HH:mm"), // Show day of month and hour
+  (ts) => moment(ts * 1000).format("Do MMM"), // Show Month and day at the left and right edges
   (ts) => moment(ts * 1000).format("Do MMM"), // Show Month and day at the left and right edges
   7, // One point per day
   "min,max,avg" // Min, max and average for week view
 );
 
+
+
+function getAdjustedTimestamp(period) {
+  const now = new Date();
+
+  switch (period.toLowerCase()) {
+    case 'hour':
+      // Set minutes, seconds, and milliseconds to 0 to get the start of the current hour
+      now.setMinutes(0, 0, 0);
+      break;
+    case 'day':
+      // Set hours, minutes, seconds, and milliseconds to 0 to get the start of the current day
+      now.setHours(0, 0, 0, 0);
+      break;
+    case 'week':
+      // Get the start of the current week (assuming Sunday as the first day of the week)
+      const day = now.getDay(); // 0 (Sunday) to 6 (Saturday)
+      const diff = now.getDate() - day; // Adjust to the previous Sunday
+      now.setDate(diff);
+      now.setHours(0, 0, 0, 0);
+      break;
+    default:
+      throw new Error("Invalid period. Use 'hour', 'day', or 'week'.");
+  }
+
+  // Subtract the specified period
+  switch (period.toLowerCase()) {
+    case 'hour':
+      now.setHours(now.getHours() - 1);
+      break;
+    case 'day':
+      now.setDate(now.getDate() - 1);
+      break;
+    case 'week':
+      now.setDate(now.getDate() - 7);
+      break;
+  }
+
+  // Return the timestamp in seconds
+  console.log("adjusted: "+now);
+  return Math.floor(now.getTime()/1000);
+}
+
 function App() {
+
+
   const [data, setData] = useState([]);
+  const [currentView, setCurrentView] = useState(hourView);
   const [startTimestamp, setStartTimestamp] = useState(
-    Math.floor(Date.now() / 1000 - 3600)
+      getAdjustedTimestamp(currentView.periodName)
   );
   const [endTimestamp, setEndTimestamp] = useState(
     Math.floor(Date.now() / 1000)
   );
-  const [currentView, setCurrentView] = useState(hourView);
   const [sensors, setSensors] = useState([]);
   const [selectedSensor, setSelectedSensor] = useState(null);
 
@@ -148,9 +199,8 @@ function App() {
       .then((response) => response.json())
       .then((sensor_data) =>  {
         let downsampled_data = sensor_data.downsampled_data
+        console.log("SENSOR_DATA: " + sensor_data)
         setData(downsampled_data);
-        console.log("DOWNSAMPLED: " + downsampled_data.length + " sensor samples")
-        console.log("EXPECTING: " + currentView.sampleBuckets + " sensor samples")
 
         if (downsampled_data.length > 0) {
           let lastDate = downsampled_data.at(-1)["timestamp"];
@@ -176,7 +226,15 @@ function App() {
     setStartTimestamp((prev) => prev + currentView.fastMovePeriod);
   };
 
-  const setToNow = () => setStartTimestamp(Math.floor(Date.now() / 1000));
+
+
+// Example usage:
+// console.log(timestamp);
+
+
+  const setToNow = () => { 
+      setStartTimestamp(getAdjustedTimestamp(currentView.periodName))
+  };
 
   return (
     <div style={{ width: "95%", height: 600 }}>
@@ -237,7 +295,7 @@ function App() {
             dataKey="timestamp"
             domain={[
               startTimestamp,
-              Math.min(startTimestamp + currentView.period, endTimestamp),
+              'startTimestamp + currentView.period'
             ]}
             tick={<CustomizedAxisTick data={data} />}
             tickFormatter={currentView.tickFormatter}
