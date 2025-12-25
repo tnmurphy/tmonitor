@@ -35,6 +35,7 @@ def run_heater(seconds: int = 300, seconds_off: int = 300):
 def heat_loop(low_temp: float, heater_on_secs: int, heater_off_secs: int):
     therm = temp.TemperatureReader()
     low_temp_counter = 0
+    sys.stdout.write(f"heater_control: heat_loop mode to maintain > {low_temp} deg. C\n")
     while True:
         sleep(60)
         t = therm.read()

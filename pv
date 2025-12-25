@@ -258,7 +258,7 @@ def main():
        
         script  = pathlib.Path(args.args[0])
 
-        p.run(["python3", script.name], working_dir = script.parent)
+        p.run(["python3", script.name, *args.args[1:]], working_dir = script.parent)
     if args.command == "sh":
         p.run(args.args)
     elif args.command == "venv":
