@@ -25,29 +25,31 @@ def run_heater(seconds: int = 300, seconds_off: int = 300):
     assert seconds_off > seconds
     try:
         led.on()
-        print(f"heater_control: switching on: {led.value}")
+        sys.stderr.write(f"heater_control: switching on: {led.value}")
         sleep_print(seconds, 60, "on") # five minutes.
     finally:
         led.close()
-        print(f"heater_control: switching off: {led}")
+        sys.stderr.write(f"heater_control: switching off: {led}")
         sleep_print(seconds_off, 60, "off") # force it to be off for a set period
 
 def heat_loop(low_temp: float, heater_on_secs: int, heater_off_secs: int):
     therm = temp.TemperatureReader()
     low_temp_counter = 0
-    sys.stdout.write(f"heater_control: heat_loop mode to maintain > {low_temp} deg. C\n")
+    sys.stderr.write(f"heater_control: heat_loop mode to maintain > {low_temp} deg. C\n")
+    sys.stderr.write(f"heater_control: pattern is  on for {heater_on_secs} then off for {heater_off_secs}s\n")
+    sys.stderr.flush()
     while True:
         sleep(60)
         t = therm.read()
         if t < low_temp:
             low_temp_counter += 1
-            sys.stdout.write(f"heater_control: low temperature {temp}\n")
+            sys.stderr.write(f"heater_control: low temperature {temp}\n")
             if low_temp_counter == 3: # fire up if we measure a low temperature 3 times
-                sys.stdout.write(f"heater_control: low temperature seen 3 times: running heater for {heater_on_secs}s\n")
+                sys.stderr.write(f"heater_control: low temperature seen 3 times: running heater for {heater_on_secs}s\n")
                 run_heater(heater_on_secs, heater_off_secs)
                 low_temp_counter = 0
         else:
-            sys.stdout.write(f"heater_control: temperature ok: {t} >= {low_temp}\n")
+            sys.stderr.write(f"heater_control: temperature ok: {t} >= {low_temp}\n")
             low_temp_counter = 0
 
 if __name__ == "__main__":
