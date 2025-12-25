@@ -212,7 +212,7 @@ class Project:
         args_str = " ".join(args)
         print(f"running: {args_str}")
         subprocess.call(
-            f"set -x; . {self.venv_dir}/bin/activate; echo \"python=$(which python)\"; cd '{working_dir}'; {args_str}",
+            f"set -x; . {self.venv_dir}/bin/activate; echo \"python=$(which python)\"; cd '{working_dir}' && {args_str}",
             shell=True,
             executable="/bin/bash"
         )

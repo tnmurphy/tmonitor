@@ -16,7 +16,7 @@ async def read_devices(queue: asyncio.Queue, readers: List[DeviceReader]) -> Non
                 print("tprobe: reading...")
                 readings = await reader.read()
                 await queue.put(readings)
-                print(f"tprobe: enqueued {len(readings)} readings at {asyncio.get_event_loop().time()}")
+                print(f"tprobe: enqueued {len(readings)} readings at {time()}")
                 print(f"tprobe: Readings: {readings}")
             except Exception as e:
                 print(f"tprobe: error reading from device: {e}")
@@ -30,7 +30,7 @@ async def send_readings(queue: asyncio.Queue, url: str) -> None:
             try:
                 async with session.post(url, json=readings) as resp:
                     if resp.status == 200:
-                        print(f"tprobe: sent {len(readings)} readings to {url} at {time.time()}")
+                        print(f"tprobe: sent {len(readings)} readings to {url} at {time()}")
                     else:
                         print(f"tprobe: error: failed to send readings: {resp.status}")
             except Exception as e:
@@ -38,8 +38,6 @@ async def send_readings(queue: asyncio.Queue, url: str) -> None:
             queue.task_done()
 
 async def main(interval: int = DEFAULT_INTERVAL) -> None:
-    global DEFAULT_INTERVAL
-    DEFAULT_INTERVAL = interval
     queue = asyncio.Queue()
 
     from sensorhub import SensorHubReader
@@ -57,7 +55,7 @@ async def main(interval: int = DEFAULT_INTERVAL) -> None:
     await asyncio.gather(*tasks)
 
 if __name__ == "__main__":
-    print("tprobe: startup")
+    print("tprobe: startup\n\n\n\n")
     uvloop.install()
     asyncio.run(main(DEFAULT_INTERVAL))
 
