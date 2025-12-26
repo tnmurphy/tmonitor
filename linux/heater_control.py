@@ -32,9 +32,12 @@ def run_heater(seconds: int = 300, seconds_off: int = 300):
         sys.stderr.write(f"heater_control: switching off: {led}")
         sleep_print(seconds_off, 60, "off") # force it to be off for a set period
 
+NOTIFICATION_LIMITER=5
+
 def heat_loop(low_temp: float, heater_on_secs: int, heater_off_secs: int):
     therm = temp.TemperatureReader()
     low_temp_counter = 0
+    notification_counter = 0
     sys.stderr.write(f"heater_control: heat_loop mode to maintain > {low_temp} deg. C\n")
     sys.stderr.write(f"heater_control: pattern is  on for {heater_on_secs} then off for {heater_off_secs}s\n")
     sys.stderr.flush()
@@ -49,7 +52,11 @@ def heat_loop(low_temp: float, heater_on_secs: int, heater_off_secs: int):
                 run_heater(heater_on_secs, heater_off_secs)
                 low_temp_counter = 0
         else:
-            sys.stderr.write(f"heater_control: temperature ok: {t} >= {low_temp}\n")
+            notification_counter += 1
+            if notification_counter % NOTIFICATION_LIMITER == 0:
+                sys.stderr.write(f"heater_control: temperature ok: {t} >= {low_temp}\n")
+                notification_counter = 1
+            
             low_temp_counter = 0
 
 if __name__ == "__main__":
