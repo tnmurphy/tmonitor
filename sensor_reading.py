@@ -177,9 +177,9 @@ class SensorReading(SQLModel, table=True):
 
     def assert_matching_type(self, unit: str, sensor: str):
         if unit != self.unit:
-            raise ValueError(f"mismatched units units: {unit} <> {self.unit}")
+            raise ValueError(f"mismatched units: {unit} <> {self.unit}")
         if sensor != self.sensor:
-            raise ValueError(f"mismatched sensor {sensor} <> {self.sensor}")
+            raise ValueError(f"mismatched sensor: {sensor} <> {self.sensor}")
 
     @classmethod
     def sensorlist(

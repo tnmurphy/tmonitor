@@ -43,7 +43,7 @@ const hourView = new View(
   3600, // 1 hour in seconds
   (ts) => moment(ts * 1000).format("mm"), // Show minutes
   (ts) => moment(ts * 1000).format("HH:mm"), // Show minutes
-  6, // 5 minute intervals
+  (startTimestamp, endTimestamp) => Math.floor((endTimestamp - startTimestamp)/300), // One point per hour
   "avg" // Only average for hour view
 );
 
@@ -54,7 +54,7 @@ const dayView = new View(
   86400, // 1 day in seconds
   (ts) => moment(ts * 1000).format("HH:mm"), // Show hours and minutes
   (ts) => moment(ts * 1000).format("HH:mm Do"), // Show day and hour at the edges of the axis
-  48, // 30 minute intervals
+  (startTimestamp, endTimestamp) => Math.floor((endTimestamp - startTimestamp)/3600), // One point per hour
   "min,max,avg" // Min, max and average for day view
 );
 
@@ -65,7 +65,7 @@ const weekView = new View(
   604800, // 1 week in seconds
   (ts) => moment(ts * 1000).format("Do MMM"), // Show Month and day at the left and right edges
   (ts) => moment(ts * 1000).format("Do MMM"), // Show Month and day at the left and right edges
-  7, // One point per day
+  (startTimestamp, endTimestamp) => Math.floor((endTimestamp - startTimestamp)/86400), // One point per day
   "min,max,avg" // Min, max and average for week view
 );
 
@@ -73,43 +73,40 @@ const weekView = new View(
 
 function getAdjustedTimestamp(period) {
   const now = new Date();
+  const adjusted = new Date();
 
-  switch (period.toLowerCase()) {
+  switch (period.periodName.toLowerCase()) {
     case 'hour':
       // Set minutes, seconds, and milliseconds to 0 to get the start of the current hour
-      now.setMinutes(0, 0, 0);
+      adjusted.setMinutes(0, 0, 0);
       break;
     case 'day':
       // Set hours, minutes, seconds, and milliseconds to 0 to get the start of the current day
-      now.setHours(0, 0, 0, 0);
+      adjusted.setHours(0, 0, 0, 0);
       break;
     case 'week':
-      // Get the start of the current week (assuming Sunday as the first day of the week)
-      const day = now.getDay(); // 0 (Sunday) to 6 (Saturday)
-      const diff = now.getDate() - day; // Adjust to the previous Sunday
-      now.setDate(diff);
-      now.setHours(0, 0, 0, 0);
+      adjusted.setHours(0, 0, 0, 0);
       break;
     default:
       throw new Error("Invalid period. Use 'hour', 'day', or 'week'.");
   }
 
   // Subtract the specified period
-  switch (period.toLowerCase()) {
+  switch (period.periodName.toLowerCase()) {
     case 'hour':
-      now.setHours(now.getHours() - 1);
+      adjusted.setHours(now.getHours() - 1);
       break;
     case 'day':
-      now.setDate(now.getDate() - 1);
+      adjusted.setDate(now.getDate() - 1);
       break;
     case 'week':
-      now.setDate(now.getDate() - 7);
+      adjusted.setDate(now.getDate() - 7);
       break;
   }
 
   // Return the timestamp in seconds
-  console.log("adjusted: "+now);
-  return Math.floor(now.getTime()/1000);
+  console.log(" Selecting start time for graph. Current time is: " + now + " adjusted to be one " + period.periodName +" back: " + adjusted);
+  return Math.floor(adjusted.getTime()/1000);
 }
 
 function App() {
@@ -118,7 +115,7 @@ function App() {
   const [data, setData] = useState([]);
   const [currentView, setCurrentView] = useState(hourView);
   const [startTimestamp, setStartTimestamp] = useState(
-      getAdjustedTimestamp(currentView.periodName)
+      getAdjustedTimestamp(currentView)
   );
   const [endTimestamp, setEndTimestamp] = useState(
     Math.floor(Date.now() / 1000)
@@ -193,7 +190,7 @@ function App() {
     if (!selectedSensor) return;
 
     fetch(
-`${API_URL}/sample?sensors=${selectedSensor}&start_timestamp=${startTimestamp}&period=${currentView.period}&units=C&sample_buckets=${currentView.sampleBuckets}&sample_methods=${currentView.sampleMethods}&limit=3000`,
+`${API_URL}/sample?sensors=${selectedSensor}&start_timestamp=${startTimestamp}&period=${currentView.period}&units=C&sample_buckets=${currentView.sampleBuckets(startTimestamp, endTimestamp)}&sample_methods=${currentView.sampleMethods}&limit=3000`,
       { mode: "cors" }
     )
       .then((response) => response.json())
@@ -208,7 +205,7 @@ function App() {
         }
       })
       .catch((error) => console.error("Error fetching data:", error));
-  }, [startTimestamp, currentView, selectedSensor]);
+  }, [startTimestamp, endTimestamp, currentView, selectedSensor]);
 
   const moveBackward = () => {
     setStartTimestamp((prev) => Math.max(prev - currentView.movePeriod, 0));
@@ -233,7 +230,7 @@ function App() {
 
 
   const setToNow = () => { 
-      setStartTimestamp(getAdjustedTimestamp(currentView.periodName))
+      setStartTimestamp(getAdjustedTimestamp(currentView))
   };
 
   return (
