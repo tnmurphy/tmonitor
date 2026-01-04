@@ -1,0 +1,13 @@
+[Unit]
+Description=Heater Control service
+Requires=network.target
+
+[Service]
+User=thaig
+WorkingDirectory=/home/thaig/src/tmonitor/linux
+ExecStart=/usr/bin/python3 ../pv run linux/heater_control.py server
+
+[Install]
+WantedBy=multi-user.target
+
+

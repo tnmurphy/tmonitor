@@ -59,6 +59,8 @@ origins = [
     "http://localhost:8080",
     "http://localhost:3000",
     "http://rhodes.local",
+    "http://rhodes:3000",
+    "http://rhodes:5000",
     "http://rhodes.local:3000",
     "http://rhodes.local:5000",
     "http://chivero:5000",
