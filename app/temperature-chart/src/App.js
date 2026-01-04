@@ -43,7 +43,7 @@ const hourView = new View(
   3600, // 1 hour in seconds
   (ts) => moment(ts * 1000).format("mm"), // Show minutes
   (ts) => moment(ts * 1000).format("HH:mm"), // Show minutes
-  (startTimestamp, endTimestamp) => Math.floor((endTimestamp - startTimestamp)/300), // One point per hour
+  (startTimestamp, endTimestamp) => Math.max(1,Math.round((endTimestamp - startTimestamp)/300)), // One point per hour
   "avg" // Only average for hour view
 );
 
@@ -54,7 +54,7 @@ const dayView = new View(
   86400, // 1 day in seconds
   (ts) => moment(ts * 1000).format("HH:mm"), // Show hours and minutes
   (ts) => moment(ts * 1000).format("HH:mm Do"), // Show day and hour at the edges of the axis
-  (startTimestamp, endTimestamp) => Math.floor((endTimestamp - startTimestamp)/3600), // One point per hour
+  (startTimestamp, endTimestamp) => Math.max(1,Math.round((endTimestamp - startTimestamp)/3600)), // One point per hour
   "min,max,avg" // Min, max and average for day view
 );
 
@@ -65,7 +65,7 @@ const weekView = new View(
   604800, // 1 week in seconds
   (ts) => moment(ts * 1000).format("Do MMM"), // Show Month and day at the left and right edges
   (ts) => moment(ts * 1000).format("Do MMM"), // Show Month and day at the left and right edges
-  (startTimestamp, endTimestamp) => Math.floor((endTimestamp - startTimestamp)/86400), // One point per day
+  (startTimestamp, endTimestamp) => Math.max(1,Math.round((endTimestamp - startTimestamp)/86400)), // One point per day
   "min,max,avg" // Min, max and average for week view
 );
 
@@ -92,17 +92,17 @@ function getAdjustedTimestamp(period) {
   }
 
   // Subtract the specified period
-  switch (period.periodName.toLowerCase()) {
-    case 'hour':
-      adjusted.setHours(now.getHours() - 1);
-      break;
-    case 'day':
-      adjusted.setDate(now.getDate() - 1);
-      break;
-    case 'week':
-      adjusted.setDate(now.getDate() - 7);
-      break;
-  }
+// switch (period.periodName.toLowerCase()) {
+//   case 'hour':
+//     adjusted.setHours(now.getHours() - 1);
+//     break;
+//   case 'day':
+//     adjusted.setDate(now.getDate() - 1);
+//     break;
+//   case 'week':
+//     adjusted.setDate(now.getDate() - 7);
+//     break;
+// }
 
   // Return the timestamp in seconds
   console.log(" Selecting start time for graph. Current time is: " + now + " adjusted to be one " + period.periodName +" back: " + adjusted);
@@ -163,7 +163,10 @@ function App() {
         >
           <p>{formattedDate}</p>
           {payload.map((item) => (
-            <p key={item.name}>
+            <p style={{
+               padding: "10px",
+               }}
+            key={item.name}>
               {item.name}: {item.value} {item.unit}
             </p>
           ))}
@@ -346,7 +349,7 @@ function prettyDataSeriesName(series) {
 
   const m = measurements[unit] || '?';
   
-  return method + " " + m + "from " + sensor  
+  return method + " " + m + " node: " + sensor  
 }
 
 // Helper function to assign colors to different sample methods
