@@ -3,9 +3,12 @@ from devicereader import DeviceReader
 from typing import List, Dict, Any
 import time
 
+
 class SensorHubReader(DeviceReader):
     """Read from a sensorhub and return probe data"""
-    def __init__(self, bus: smbus.SMBus = None, address: int = 0x17):
+
+    def __init__(self, sensor_node: str, bus: smbus.SMBus = None, address: int = 0x17):
+        self.sensor_node = sensor_node
         if bus is None:
             self.bus = smbus.SMBus(1)
         else:
@@ -25,50 +28,63 @@ class SensorHubReader(DeviceReader):
 
         # Temperature
         temp = self.bus.read_byte_data(self.address, 0x05)
-        readings.append({
-            "sensor": "temperature",
-            "unit": "C",
-            "value": float(temp),
-            "recorded_timestamp": read_time
-        })
+        readings.append(
+            {
+                "sensor": self.sensor_node +"/temperature",
+                "unit": "C",
+                "value": float(temp),
+                "recorded_timestamp": read_time,
+            }
+        )
 
         # Humidity
         humidity = self.bus.read_byte_data(self.address, 0x06)
-        readings.append({
-            "sensor": "humidity",
-            "unit": "%",
-            "value": float(humidity),
-            "recorded_timestamp": read_time
-        })
+        readings.append(
+            {
+                "sensor": self.sensor_node + "/humidity",
+                "unit": "%",
+                "value": float(humidity),
+                "recorded_timestamp": read_time,
+            }
+        )
 
         # Light
-        light = (self.bus.read_byte_data(self.address, 0x03) << 8) | (self.bus.read_byte_data(self.address, 0x02))
-        readings.append({
-            "sensor": "light",
-            "unit": "lux",
-            "value": float(light),
-            "recorded_timestamp": read_time
-        })
+        light = (self.bus.read_byte_data(self.address, 0x03) << 8) | (
+            self.bus.read_byte_data(self.address, 0x02)
+        )
+        readings.append(
+            {
+                "sensor": self.sensor_node + "/light",
+                "unit": "lux",
+                "value": float(light),
+                "recorded_timestamp": read_time,
+            }
+        )
 
         # Pressure
-        pressure = (self.bus.read_byte_data(self.address, 0x0B) << 16) | (
-            (self.bus.read_byte_data(self.address, 0x0A) << 8)) | (
-            (self.bus.read_byte_data(self.address, 0x09)))
-        readings.append({
-            "sensor": "pressure",
-            "unit": "kPa",
-            "value": float(pressure),
-            "recorded_timestamp": read_time
-        })
+        pressure = (
+            (self.bus.read_byte_data(self.address, 0x0B) << 16)
+            | ((self.bus.read_byte_data(self.address, 0x0A) << 8))
+            | ((self.bus.read_byte_data(self.address, 0x09)))
+        )
+        readings.append(
+            {
+                "sensor": self.sensor_node + "/pressure",
+                "unit": "kPa",
+                "value": float(pressure),
+                "recorded_timestamp": read_time,
+            }
+        )
 
         # Human presence
         human = self.bus.read_byte_data(self.address, 0x0D)
-        readings.append({
-            "sensor": "human_presence",
-            "unit": "bool",
-            "value": float(human),
-            "recorded_timestamp": read_time
-        })
+        readings.append(
+            {
+                "sensor": self.sensor_node + "/human_presence",
+                "unit": "bool",
+                "value": float(human),
+                "recorded_timestamp": read_time,
+            }
+        )
 
         return readings
-

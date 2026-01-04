@@ -2,11 +2,15 @@
 """
 Run the heater for a few minutes and ensure it's off for
 the same time.
+
+Author: Timothy Norman Murphy <tnmurphy@gmail.com> (c) 2025
+LICENSE: MIT
 """
 from gpiozero import LED
 from time import sleep
 import sys
 import temp
+
 
 def sleep_print(period: int, log_period: int, status: str):
     counter = 0
@@ -15,10 +19,10 @@ def sleep_print(period: int, log_period: int, status: str):
         sleep(log_period)
         counter += log_period
         sys.stdout.write(f"heater_control: {status} for {counter} of {period}s\n")
-         
+
 
 def run_heater(seconds: int = 300, seconds_off: int = 300):
-    led=LED(22)
+    led = LED(22)
     print(f"heater_control: pin: {led.value}")
     print(f"heater_control: Active_high: {led.active_high}")
     assert seconds_off > 0
@@ -26,20 +30,26 @@ def run_heater(seconds: int = 300, seconds_off: int = 300):
     try:
         led.on()
         sys.stderr.write(f"heater_control: switching on: {led.value}")
-        sleep_print(seconds, 60, "on") # five minutes.
+        sleep_print(seconds, 60, "on")  # five minutes.
     finally:
         led.close()
         sys.stderr.write(f"heater_control: switching off: {led}")
-        sleep_print(seconds_off, 60, "off") # force it to be off for a set period
+        sleep_print(seconds_off, 60, "off")  # force it to be off for a set period
 
-NOTIFICATION_LIMITER=5
+
+NOTIFICATION_LIMITER = 5
+
 
 def heat_loop(low_temp: float, heater_on_secs: int, heater_off_secs: int):
     therm = temp.TemperatureReader()
     low_temp_counter = 0
     notification_counter = 0
-    sys.stderr.write(f"heater_control: heat_loop mode to maintain > {low_temp} deg. C\n")
-    sys.stderr.write(f"heater_control: pattern is  on for {heater_on_secs} then off for {heater_off_secs}s\n")
+    sys.stderr.write(
+        f"heater_control: heat_loop mode to maintain > {low_temp} deg. C\n"
+    )
+    sys.stderr.write(
+        f"heater_control: pattern is  on for {heater_on_secs} then off for {heater_off_secs}s\n"
+    )
     sys.stderr.flush()
     while True:
         sleep(60)
@@ -47,8 +57,10 @@ def heat_loop(low_temp: float, heater_on_secs: int, heater_off_secs: int):
         if t < low_temp:
             low_temp_counter += 1
             sys.stderr.write(f"heater_control: low temperature {temp}\n")
-            if low_temp_counter == 3: # fire up if we measure a low temperature 3 times
-                sys.stderr.write(f"heater_control: low temperature seen 3 times: running heater for {heater_on_secs}s\n")
+            if low_temp_counter == 3:  # fire up if we measure a low temperature 3 times
+                sys.stderr.write(
+                    f"heater_control: low temperature seen 3 times: running heater for {heater_on_secs}s\n"
+                )
                 run_heater(heater_on_secs, heater_off_secs)
                 low_temp_counter = 0
         else:
@@ -56,16 +68,17 @@ def heat_loop(low_temp: float, heater_on_secs: int, heater_off_secs: int):
             if notification_counter % NOTIFICATION_LIMITER == 0:
                 sys.stderr.write(f"heater_control: temperature ok: {t} >= {low_temp}\n")
                 notification_counter = 1
-            
+
             low_temp_counter = 0
+
 
 if __name__ == "__main__":
 
-    runtime=300
+    runtime = 300
     if len(sys.argv) > 1:
         if sys.argv[1] == "server":
             # bounce the heat up if it goes below 6
-            heat_loop(6,300,45*60)
+            heat_loop(6, 300, 45 * 60)
         else:
             runtime = int(sys.argv[1])
             run_heater(runtime)
