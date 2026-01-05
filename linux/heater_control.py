@@ -79,6 +79,7 @@ def heat_loop(low_temp: float, heater_on_secs: int, heater_off_secs: int):
 if __name__ == "__main__":
 
     runtime = 300
+    logging.basicConfig(level = logging.INFO, format="%(message)s")
     if len(sys.argv) > 1:
         if sys.argv[1] == "server":
             # bounce the heat up if it goes below 6
