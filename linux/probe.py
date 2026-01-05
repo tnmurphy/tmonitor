@@ -90,6 +90,8 @@ if __name__ == "__main__":
     assert len(args.name.strip()) > 0
     assert args.interval  >= MINIMUM_INTERVAL # we don't want the probe to pester the service.
 
+    logging.basicConfig(level = logging.INFO, format="%(message)s")
+
     logger.info("tprobe: startup\n")
     uvloop.install()
     asyncio.run(main(args.name, args.interval))
