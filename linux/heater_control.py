@@ -10,6 +10,10 @@ from gpiozero import LED
 from time import sleep
 import sys
 import temp
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 
 def sleep_print(period: int, log_period: int, status: str):
@@ -29,11 +33,11 @@ def run_heater(seconds: int = 300, seconds_off: int = 300):
     assert seconds_off > seconds
     try:
         led.on()
-        sys.stderr.write(f"heater_control: switching on: {led.value}")
+        logger.info(f"heater_control: switching on: {led.value}")
         sleep_print(seconds, 60, "on")  # five minutes.
     finally:
         led.close()
-        sys.stderr.write(f"heater_control: switching off: {led}")
+        logger.info(f"heater_control: switching off: {led}")
         sleep_print(seconds_off, 60, "off")  # force it to be off for a set period
 
 
@@ -44,10 +48,10 @@ def heat_loop(low_temp: float, heater_on_secs: int, heater_off_secs: int):
     therm = temp.TemperatureReader()
     low_temp_counter = 0
     notification_counter = 0
-    sys.stderr.write(
+    logger.info(
         f"heater_control: heat_loop mode to maintain > {low_temp} deg. C\n"
     )
-    sys.stderr.write(
+    logger.info(
         f"heater_control: pattern is  on for {heater_on_secs} then off for {heater_off_secs}s\n"
     )
     sys.stderr.flush()
@@ -56,9 +60,9 @@ def heat_loop(low_temp: float, heater_on_secs: int, heater_off_secs: int):
         t = therm.read()
         if t < low_temp:
             low_temp_counter += 1
-            sys.stderr.write(f"heater_control: low temperature {temp}\n")
+            logger.info(f"heater_control: low temperature {temp}\n")
             if low_temp_counter == 3:  # fire up if we measure a low temperature 3 times
-                sys.stderr.write(
+                logger.warn(
                     f"heater_control: low temperature seen 3 times: running heater for {heater_on_secs}s\n"
                 )
                 run_heater(heater_on_secs, heater_off_secs)
@@ -66,7 +70,7 @@ def heat_loop(low_temp: float, heater_on_secs: int, heater_off_secs: int):
         else:
             notification_counter += 1
             if notification_counter % NOTIFICATION_LIMITER == 0:
-                sys.stderr.write(f"heater_control: temperature ok: {t} >= {low_temp}\n")
+                logger.info(f"heater_control: temperature ok: {t} >= {low_temp}\n")
                 notification_counter = 1
 
             low_temp_counter = 0
