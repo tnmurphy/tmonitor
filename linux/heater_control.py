@@ -78,7 +78,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         if sys.argv[1] == "server":
             # bounce the heat up if it goes below 6
-            heat_loop(6, 300, 45 * 60)
+            heat_loop(6,2.5*60,20*60)  # shorter run but more often (previously 5 min on and 45 off) to try to handle colder weather. 
         else:
             runtime = int(sys.argv[1])
             run_heater(runtime)
