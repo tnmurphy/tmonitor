@@ -13,7 +13,7 @@ import moment from "moment";
 
 const API_URL = "http://chivero:5000";
 
-class View {
+class ViewStyle {
   constructor(
     periodName, 
     period,
@@ -32,22 +32,73 @@ class View {
     this.edgeFormatter = edgeFormatter;
     this.sampleBuckets = sampleBuckets;
     this.sampleMethods = sampleMethods.split(",");
-    
   }
 }
 
-const hourView = new View(
+
+class View {
+  constructor(viewStyle, startTime) {
+    // The initial timestamp and end timestamp if no start timestamp is specified
+    // const now = new Date();
+    this.viewStyle = viewStyle;
+    [this.startTimestamp, this.endTimestamp] = this.calcTimeRange(startTime);
+  }
+
+  calcTimeRange(now) {
+    const adjusted = new Date();
+  
+    // Subtract the specified period
+    switch (this.period.periodName.toLowerCase()) {
+      case 'hour':
+        adjusted.setHours(now.getHours() - 1);
+        break;
+      case 'day':
+        adjusted.setDate(now.getDate() - 1);
+        break;
+      case 'week':
+        adjusted.setDate(now.getDate() - 7);
+        break;
+      default:
+        break;
+    }
+  
+    switch (this.period.periodName.toLowerCase()) {
+      case 'hour':
+        // Set minutes, seconds, and milliseconds to 0 to get the start of the current hour
+        adjusted.setMinutes(0, 0, 0);
+        break;
+      case 'day':
+        // Set hours, minutes, seconds, and milliseconds to 0 to get the start of the current day
+        adjusted.setHours(0, 0, 0, 0);
+        break;
+      case 'week':
+        adjusted.setHours(0, 0, 0, 0);
+        break;
+      default:
+        throw new Error("Invalid period. Use 'hour', 'day', or 'week'.");
+    }
+
+    // Return the timestamp in seconds
+    console.log(" Selecting start time for graph. Current time is: " + now + " adjusted to be one " + this.period.periodName +" back: " + adjusted);
+    return [Math.floor(adjusted.getTime()/1000), Math.floor(now.getTime()/1000)];
+  };
+
+  getBucketCount() {
+     Math.max(1,Math.round((this.endTimestamp - this.startTimestamp)/this.viewStyle.movePeriod)) // One point per hour
+  }
+}
+
+const hourView = new ViewStyle(
   "hour",
   3600, // 1 hour in seconds
   300, // 5 minutes in seconds
   3600, // 1 hour in seconds
   (ts) => moment(ts * 1000).format("mm"), // Show minutes
   (ts) => moment(ts * 1000).format("HH:mm"), // Show minutes
-  (startTimestamp, endTimestamp) => Math.max(1,Math.round((endTimestamp - startTimestamp)/300)), // One point per hour
   "avg" // Only average for hour view
 );
 
-const dayView = new View(
+const dayView = new ViewStyle(
   "day",
   86400, // 1 day in seconds
   3600, // 1 hour in seconds
@@ -58,7 +109,7 @@ const dayView = new View(
   "min,max,avg" // Min, max and average for day view
 );
 
-const weekView = new View(
+const weekView = new ViewStyle(
   "week",
   604800, // 1 week in seconds
   86400, // 1 day in seconds
@@ -70,56 +121,10 @@ const weekView = new View(
 );
 
 
-
-function getAdjustedTimestamp(period) {
-  const now = new Date();
-  const adjusted = new Date();
-
-  switch (period.periodName.toLowerCase()) {
-    case 'hour':
-      // Set minutes, seconds, and milliseconds to 0 to get the start of the current hour
-      adjusted.setMinutes(0, 0, 0);
-      break;
-    case 'day':
-      // Set hours, minutes, seconds, and milliseconds to 0 to get the start of the current day
-      adjusted.setHours(0, 0, 0, 0);
-      break;
-    case 'week':
-      adjusted.setHours(0, 0, 0, 0);
-      break;
-    default:
-      throw new Error("Invalid period. Use 'hour', 'day', or 'week'.");
-  }
-
-  // Subtract the specified period
-// switch (period.periodName.toLowerCase()) {
-//   case 'hour':
-//     adjusted.setHours(now.getHours() - 1);
-//     break;
-//   case 'day':
-//     adjusted.setDate(now.getDate() - 1);
-//     break;
-//   case 'week':
-//     adjusted.setDate(now.getDate() - 7);
-//     break;
-// }
-
-  // Return the timestamp in seconds
-  console.log(" Selecting start time for graph. Current time is: " + now + " adjusted to be one " + period.periodName +" back: " + adjusted);
-  return Math.floor(adjusted.getTime()/1000);
-}
-
 function App() {
 
-
   const [data, setData] = useState([]);
-  const [currentView, setCurrentView] = useState(hourView);
-  const [startTimestamp, setStartTimestamp] = useState(
-      getAdjustedTimestamp(currentView)
-  );
-  const [endTimestamp, setEndTimestamp] = useState(
-    Math.floor(Date.now() / 1000)
-  );
+  const [currentView, setCurrentView] = useState(new View(hourView, new Date.now()));
   const [sensors, setSensors] = useState([]);
   const [selectedSensor, setSelectedSensor] = useState(null);
 
@@ -193,7 +198,7 @@ function App() {
     if (!selectedSensor) return;
 
     fetch(
-`${API_URL}/sample?sensors=${selectedSensor}&start_timestamp=${startTimestamp}&period=${currentView.period}&units=C&sample_buckets=${currentView.sampleBuckets(startTimestamp, endTimestamp)}&sample_methods=${currentView.sampleMethods}&limit=3000`,
+`${API_URL}/sample?sensors=${selectedSensor}&start_timestamp=${currentView.startTimestamp}&period=${currentView.period}&units=C&sample_buckets=${currentView.getBucketCount()}&sample_methods=${currentView.currentViewStyle.sampleMethods}&limit=3000`,
       { mode: "cors" }
     )
       .then((response) => response.json())
@@ -202,15 +207,13 @@ function App() {
         console.log("SENSOR_DATA: " + sensor_data)
         setData(downsampled_data);
 
-        if (downsampled_data.length > 0) {
-          let lastDate = downsampled_data.at(-1)["timestamp"];
-          setEndTimestamp(lastDate);
-        }
       })
       .catch((error) => console.error("Error fetching data:", error));
-  }, [startTimestamp, endTimestamp, currentView, selectedSensor]);
+  }, [currentView, selectedSensor]);
 
   const moveBackward = () => {
+    newView = new View(currentView.viewStyle)
+    setCurrentView(newView)
     setStartTimestamp((prev) => Math.max(prev - currentView.movePeriod, 0));
   };
 
@@ -294,8 +297,8 @@ function App() {
           <XAxis
             dataKey="timestamp"
             domain={[
-              startTimestamp,
-              'startTimestamp + currentView.period'
+              currentView.startTimestamp,
+              currentView.endTimestamp
             ]}
             tick={<CustomizedAxisTick data={data} />}
             tickFormatter={currentView.tickFormatter}
@@ -325,7 +328,7 @@ function App() {
       </ResponsiveContainer>
 
       <span style={{ margin: "10px 15px" }}>
-        View starts at: {new Date(startTimestamp * 1000).toLocaleString()}
+        View starts at: {new Date(currentView.startTimestamp * 1000).toLocaleString()}
       </span>
       <span style={{ margin: "10px 15px" }}>
         Now: {moment(Date.now()).format()}
