@@ -21,7 +21,6 @@ class ViewStyle {
     fastMovePeriod,
     tickFormatter,
     edgeFormatter,
-    sampleBuckets,
     sampleMethods
   ) {
     this.periodName = periodName
@@ -30,7 +29,6 @@ class ViewStyle {
     this.fastMovePeriod = fastMovePeriod;
     this.tickFormatter = tickFormatter;
     this.edgeFormatter = edgeFormatter;
-    this.sampleBuckets = sampleBuckets;
     this.sampleMethods = sampleMethods.split(",");
   }
 }
@@ -98,25 +96,30 @@ class View {
   };
 
   getBucketCount() {
-     return Math.max(1,Math.round((this.endTimestamp - this.startTimestamp)/this.viewStyle.movePeriod)); // One point per hour
+     // The bucket count is based on how many movePeriods fit into the start/end range
+     return Math.max(1,Math.round((this.endTimestamp - this.startTimestamp)/this.viewStyle.movePeriod)); 
   };
 
-  static moveBackwards(previous) {
+  static moveBackwards(previous, fast=false) {
     console.log("View.moveBackwards: "+previous.viewStyle.periodName);
     const nextView = new View(previous.viewStyle);
-    nextView.endTimestamp = Math.max(previous.endTimestamp - previous.viewStyle.movePeriod, 0);
-    nextView.startTimestamp = Math.max(previous.startTimestamp - previous.viewStyle.movePeriod, 0);
+
+
+    const amount = fast ? previous.viewStyle.fastMovePeriod : previous.viewStyle.movePeriod;
+    nextView.endTimestamp = Math.max(previous.endTimestamp - amount, 0);
+    nextView.startTimestamp = Math.max(previous.startTimestamp - amount, 0);
     console.log("backwards: "+nextView.viewStyle.periodName);
     return nextView;
   };
 
-  static moveForwards(previous) {
+  static moveForwards(previous, fast=false) {
     const nextView = new View(previous.viewStyle);
     const nowStamp = Math.floor(Date.now() / 1000.0);
+    const amount = fast ? previous.viewStyle.fastMovePeriod : previous.viewStyle.movePeriod;
 
     // Dont move into the future.
     console.log("MoveForwards: nowStamp=" + nowStamp);
-    const nextEndTimestamp = Math.min(previous.endTimestamp + previous.viewStyle.movePeriod, nowStamp);
+    const nextEndTimestamp = Math.min(previous.endTimestamp + amount, nowStamp);
     const movement = nextEndTimestamp - previous.endTimestamp
 
     nextView.endTimestamp = nextEndTimestamp;
@@ -135,7 +138,6 @@ const hourView = new ViewStyle(
   3600, // 1 hour in seconds
   (ts) => moment(ts * 1000).format("mm"), // Show minutes
   (ts) => moment(ts * 1000).format("HH:mm"), // Show minutes
-  (startTimestamp, endTimestamp) => Math.max(1,Math.round((endTimestamp - startTimestamp)/300)), // One point per 5 minutes
   "avg" // Only average for hour view
 );
 
@@ -146,7 +148,6 @@ const dayView = new ViewStyle(
   86400/2, // 1/2 day in seconds
   (ts) => moment(ts * 1000).format("HH:mm"), // Show hours and minutes
   (ts) => moment(ts * 1000).format("HH:mm Do"), // Show day and hour at the edges of the axis
-  (startTimestamp, endTimestamp) => Math.max(1,Math.round((endTimestamp - startTimestamp)/3600)), // One point per hour
   "min,max,avg" // Min, max and average for day view
 );
 
@@ -157,7 +158,6 @@ const weekView = new ViewStyle(
   604800, // 1 week in seconds
   (ts) => moment(ts * 1000).format("Do MMM"), // Show Month and day at the left and right edges
   (ts) => moment(ts * 1000).format("Do MMM"), // Show Month and day at the left and right edges
-  (startTimestamp, endTimestamp) => Math.max(1,Math.round((endTimestamp - startTimestamp)/86400)), // One point per day
   "min,max,avg" // Min, max and average for week view
 );
 const initialView = View.atNow(hourView);
@@ -250,10 +250,14 @@ function App() {
     )
       .then((response) => response.json())
       .then((sensor_data) =>  {
-        let downsampled_data = sensor_data.downsampled_data
         console.log("SENSOR_DATA: " + sensor_data)
+        let downsampled_data = sensor_data.downsampled_data
+        for (var i = 0; i < downsampled_data.length; i++) {
+            const ts = downsampled_data[i].timestamp
+            const sd = new Date(ts*1000);
+            console.log("DOWNSAMPLED_DATA["+i+"]: " + sd + " " + ts);
+        }
         setData(downsampled_data);
-
       })
       .catch((error) => console.error("Error fetching data:", error));
   }, [currentView, selectedSensor]);
@@ -270,12 +274,12 @@ function App() {
   };
 
   const moveFastBackwards = () => {
-    const newView = View.moveFastBackwards(currentView);
+    const newView = View.moveBackwards(currentView, true);
     setCurrentView(newView);
   };
 
   const moveFastForwards = () => {
-    const newView = View.moveFastForwards(currentView);
+    const newView = View.moveForwards(currentView, true);
     setCurrentView(newView);
   };
 
