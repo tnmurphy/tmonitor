@@ -92,23 +92,23 @@ class View {
     // Return the timestamp in seconds
     this.startTimestamp = Math.floor(adjusted.getTime()/1000);
     this.endTimestamp = Math.floor(now.getTime()/1000);
-    console.log("timeRangeEndingNow: view: " +this.viewStyle.periodName + " end-start = " + (this.endTimestamp - this.startTimestamp));
+    //console.log("timeRangeEndingNow: view: " +this.viewStyle.periodName + " end-start = " + (this.endTimestamp - this.startTimestamp));
   };
 
   getBucketCount() {
      // The bucket count is based on how many movePeriods fit into the start/end range
-     return Math.max(1,Math.round((this.endTimestamp - this.startTimestamp)/this.viewStyle.movePeriod)); 
+     return Math.max(1,Math.floor((this.endTimestamp - this.startTimestamp)/this.viewStyle.movePeriod)); 
   };
 
   static moveBackwards(previous, fast=false) {
-    console.log("View.moveBackwards: "+previous.viewStyle.periodName);
+    //console.log("View.moveBackwards: "+previous.viewStyle.periodName);
     const nextView = new View(previous.viewStyle);
 
 
     const amount = fast ? previous.viewStyle.fastMovePeriod : previous.viewStyle.movePeriod;
     nextView.endTimestamp = Math.max(previous.endTimestamp - amount, 0);
     nextView.startTimestamp = Math.max(previous.startTimestamp - amount, 0);
-    console.log("backwards: "+nextView.viewStyle.periodName);
+    //console.log("backwards: "+nextView.viewStyle.periodName);
     return nextView;
   };
 
@@ -118,13 +118,13 @@ class View {
     const amount = fast ? previous.viewStyle.fastMovePeriod : previous.viewStyle.movePeriod;
 
     // Dont move into the future.
-    console.log("MoveForwards: nowStamp=" + nowStamp);
+    //console.log("MoveForwards: nowStamp=" + nowStamp);
     const nextEndTimestamp = Math.min(previous.endTimestamp + amount, nowStamp);
     const movement = nextEndTimestamp - previous.endTimestamp
 
     nextView.endTimestamp = nextEndTimestamp;
     nextView.startTimestamp = previous.startTimestamp + movement;
-    console.log("MoveForwards: " + nextView.viewStyle.periodName +" "+nextView.startTimestamp);
+    //console.log("MoveForwards: " + nextView.viewStyle.periodName +" "+nextView.startTimestamp);
     // A shallow copy to ensure react sees a change.
     return nextView;
   };
@@ -196,7 +196,7 @@ function App() {
     if (active && payload && payload.length) {
       // Format Unix timestamp to a readable date
       const date = new Date(payload[0].payload.timestamp * 1000);
-      const formattedDate = moment(date).format();
+      const formattedDate = moment(date).format("HH:mm   DD/MM/YYYY");
 
       return (
         <div
@@ -209,11 +209,9 @@ function App() {
         >
           <p>{formattedDate}</p>
           {payload.map((item) => (
-            <p style={{
-               padding: "10px",
-               }}
+            <p 
             key={item.name}>
-              {item.name}: {item.value} {item.unit}
+              {item.name}: {item.value.toFixed(2)} {item.unit}
             </p>
           ))}
         </div>
@@ -237,12 +235,12 @@ function App() {
 
   useEffect(() => {
     if (!selectedSensor) return;
-    console.log("fetching view: " + currentView.viewStyle.periodName);
-    console.log("view keys: " + Object.keys(currentView));
-    console.log("view methods:" + Object.getOwnPropertyNames(currentView));
-    console.log("Buckets: " + currentView.getBucketCount())
-    console.log("endTimestamp: " + currentView.endTimestamp);
-    console.log("startTimestamp: " + currentView.startTimestamp);
+    //console.log("fetching view: " + currentView.viewStyle.periodName);
+    //console.log("view keys: " + Object.keys(currentView));
+    //console.log("view methods:" + Object.getOwnPropertyNames(currentView));
+    //console.log("Buckets: " + currentView.getBucketCount())
+    //console.log("endTimestamp: " + currentView.endTimestamp);
+    //console.log("startTimestamp: " + currentView.startTimestamp);
     const period = currentView.endTimestamp - currentView.startTimestamp;
     fetch(
 `${API_URL}/sample?sensors=${selectedSensor}&start_timestamp=${currentView.startTimestamp}&period=${period}&units=C&sample_buckets=${currentView.getBucketCount()}&sample_methods=${currentView.viewStyle.sampleMethods}&limit=3000`,
@@ -252,18 +250,17 @@ function App() {
       .then((sensor_data) =>  {
         console.log("SENSOR_DATA: " + sensor_data)
         let downsampled_data = sensor_data.downsampled_data
-        for (var i = 0; i < downsampled_data.length; i++) {
-            const ts = downsampled_data[i].timestamp
-            const sd = new Date(ts*1000);
-            console.log("DOWNSAMPLED_DATA["+i+"]: " + sd + " " + ts);
-        }
+     //   for (var i = 0; i < downsampled_data.length; i++) {
+     //       const ts = downsampled_data[i].timestamp
+     //       const sd = new Date(ts*1000);
+     //       console.log("DOWNSAMPLED_DATA["+i+"]: " + sd + " " + ts);
+     //   }
         setData(downsampled_data);
       })
       .catch((error) => console.error("Error fetching data:", error));
   }, [currentView, selectedSensor]);
 
   const moveBackwards = () => {
-    console.log("moveBackwards: "+currentView.viewStyle.periodName);
     const newView = View.moveBackwards(currentView);
     setCurrentView(newView);
   };
@@ -279,6 +276,7 @@ function App() {
   };
 
   const moveFastForwards = () => {
+    // console.log("moveFastForwards: "+currentView.viewStyle.periodName);
     const newView = View.moveForwards(currentView, true);
     setCurrentView(newView);
   };
