@@ -231,7 +231,7 @@ function App() {
         }
       })
       .catch((error) => console.error("Error fetching sensors:", error));
-  }, [selectedSensor]);
+  }, [selectedSensor, currentView]);
 
   useEffect(() => {
     if (!selectedSensor) return;
@@ -281,24 +281,28 @@ function App() {
     setCurrentView(newView);
   };
 
+  const setToNow = () => { 
+      console.log("Setting to now");
+      const nextView = View.atNow(currentView.viewStyle);
+      setCurrentView(nextView);
+  };
+
   const setViewStyle = (style) => {
     const newView = new View(style);
     Object.assign(newView, currentView);
     newView.viewStyle =	style;
-    setCurrentView(newView);
+    const nowStamp = new Date().getTime()/1000;
+    const gap = nowStamp - newView.startTimestamp;
+    console.log("gap: " + gap + " " + " period: " +newView.viewStyle.period);
+
+    if (nowStamp - newView.startTimestamp < newView.viewStyle.period) {
+      const nowView = View.atNow(newView.viewStyle);
+      setCurrentView(nowView);
+    } else {
+      setCurrentView(newView);
+    }
   }
  
-
-
-
-// Example usage:
-// console.log(timestamp);
-
-
-  const setToNow = () => { 
-      const nextView = View.atNow(currentView.viewStyle);
-      setCurrentView(nextView);
-  };
 
   return (
     <div style={{ width: "95%", height: 600 }}>
