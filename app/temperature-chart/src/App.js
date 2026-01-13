@@ -42,12 +42,6 @@ class View {
     this.endTimestamp = endTimestamp;
   }
 
-  static atNow(style) {
-    const now = new Date();
-    const view = new View(style);
-    view.timeRangeEndingNow(now);
-    return view;
-  }
 
   snapToNearest(adjusted) { 
     switch (this.viewStyle.periodName.toLowerCase()) {
@@ -67,33 +61,21 @@ class View {
     }
   }
 
-  moveBackOneView(adjusted) { 
-    // Subtract the specified period
-    switch (this.viewStyle.periodName.toLowerCase()) {
-      case 'hour':
-        adjusted.setHours(adjusted.getHours() - 1);
-        break;
-      case 'day':
-        adjusted.setDate(adjusted.getDate() - 1);
-        break;
-      case 'week':
-        adjusted.setDate(adjusted.getDate() - 7);
-        break;
-      default:
-        break;
-    }
-  }; 
+  static atNow(style) {
+    const nowStamp = Math.floor(new Date().getTime()/1000);
+    const view = new View(style);
 
-  timeRangeEndingNow(now) {
-    const adjusted = new Date(now);
-    this.moveBackOneView(adjusted);
-    this.snapToNearest(adjusted);
+    const adjusted = new Date((nowStamp - style.period)*1000);
+    view.snapToNearest(adjusted);
+    const adjustedStamp = Math.floor(adjusted.getTime()/1000);
 
     // Return the timestamp in seconds
-    this.startTimestamp = Math.floor(adjusted.getTime()/1000);
-    this.endTimestamp = Math.floor(now.getTime()/1000);
-    //console.log("timeRangeEndingNow: view: " +this.viewStyle.periodName + " end-start = " + (this.endTimestamp - this.startTimestamp));
-  };
+    view.startTimestamp = Math.floor(adjustedStamp);
+    view.endTimestamp = Math.floor(adjustedStamp+ 2 * style.period);
+    //view.endTimestamp = Math.floor(nowStamp);
+    console.log("atNow: view: " +view.viewStyle.periodName + " end-start = " + (view.endTimestamp - view.startTimestamp));
+    return view;
+  }
 
   getBucketCount() {
      // The bucket count is based on how many movePeriods fit into the start/end range
@@ -293,7 +275,7 @@ function App() {
     newView.viewStyle =	style;
     const nowStamp = new Date().getTime()/1000;
     const gap = nowStamp - newView.startTimestamp;
-    console.log("gap: " + gap + " " + " period: " +newView.viewStyle.period);
+    console.log("Selecting view: "+ newView.viewStyle.periodName + " gap: " + gap + " period: " +newView.viewStyle.period);
 
     if (nowStamp - newView.startTimestamp < newView.viewStyle.period) {
       const nowView = View.atNow(newView.viewStyle);
