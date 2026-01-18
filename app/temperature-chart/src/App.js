@@ -1,3 +1,9 @@
+// This is an application that fetches sensor data from a website and displays it in a graph.
+// There are hour, day and week views. It is possible to ask the website for a list of sensors 
+// and the user can then select which sensor to view in the graph. 
+// The data is sampled by the server so that it returns averages, maxima and minima for "sample buckets" 
+// rather than all the data for the requested view. 
+
 import React, { useState, useEffect } from "react";
 import {
   LineChart,
@@ -74,12 +80,19 @@ class View {
     view.endTimestamp = Math.floor(adjustedStamp+ 2 * style.period);
     //view.endTimestamp = Math.floor(nowStamp);
     console.log("atNow: view: " +view.viewStyle.periodName + " end-start = " + (view.endTimestamp - view.startTimestamp));
+    console.log("atNow: startTS: ", view.startTimestamp*1000);
+    console.log("atNow: start: ", new Date(view.startTimestamp*1000));
+    console.log("atNow: endTS: ", view.endTimestamp*1000);
+    console.log("atNow: end: ", new Date(view.endTimestamp*1000));
     return view;
   }
 
   getBucketCount() {
      // The bucket count is based on how many movePeriods fit into the start/end range
-     return Math.max(1,Math.floor((this.endTimestamp - this.startTimestamp)/this.viewStyle.movePeriod)); 
+     const gap = this.endTimestamp - this.startTimestamp;
+     const buckets=Math.max(1,Math.floor(gap/this.viewStyle.movePeriod)); 
+     console.log("getBucketCount: " +  this.viewStyle.periodName + " with gap " + gap + " buckets=" + buckets);
+     return buckets;
   };
 
   static moveBackwards(previous, fast=false) {
@@ -116,11 +129,11 @@ class View {
 const hourView = new ViewStyle(
   "hour",
   3600, // 1 hour in seconds
-  1800, // 30 minutes in seconds
+  3600/4, // 15 minutes in seconds
   3600, // 1 hour in seconds
   (ts) => moment(ts * 1000).format("mm"), // Show minutes
   (ts) => moment(ts * 1000).format("HH:mm"), // Show minutes
-  "avg" // Only average for hour view
+  "avg,min,max" // Only average for hour view
 );
 
 const dayView = new ViewStyle(
@@ -264,7 +277,7 @@ function App() {
   };
 
   const setToNow = () => { 
-      console.log("Setting to now");
+      console.log("Setting to now for "+currentView.viewStyle.periodName);
       const nextView = View.atNow(currentView.viewStyle);
       setCurrentView(nextView);
   };
