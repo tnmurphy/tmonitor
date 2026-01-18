@@ -4,6 +4,11 @@
 // The data is sampled by the server so that it returns averages, maxima and minima for "sample buckets" 
 // rather than all the data for the requested view. 
 
+
+// This application fetches sensor data from a website and displays it in a graph.
+// There are hour, day, and week views. The user can select which sensor to view.
+// The data is sampled by the server to return averages, maxima, and minima for "sample buckets".
+
 import React, { useState, useEffect } from "react";
 import {
   LineChart,
@@ -20,151 +25,155 @@ import moment from "moment";
 const API_URL = "http://chivero:5000";
 
 class ViewStyle {
+  // A viewstyle controls how wide a view is, how far and fast the user
+  // moves around in it and how it the ticks etc look. 
   constructor(
-    periodName, 
+    periodName,
     period,
     movePeriod,
     fastMovePeriod,
     tickFormatter,
     edgeFormatter,
-    sampleMethods
+    sampleMethods,
+    snapFunction
   ) {
-    this.periodName = periodName
+    this.periodName = periodName;
     this.period = period;
     this.movePeriod = movePeriod;
     this.fastMovePeriod = fastMovePeriod;
     this.tickFormatter = tickFormatter;
     this.edgeFormatter = edgeFormatter;
     this.sampleMethods = sampleMethods.split(",");
+    this.snapFunction = snapFunction;
+  }
+
+  snapToNearest(adjusted) {
+    this.snapFunction(adjusted);
   }
 }
 
-
 class View {
-  constructor(viewStyle, startTimestamp=0, endTimestamp=1) {
-    // The initial timestamp and end timestamp if no start timestamp is specified
+  // A viewport is essentially a time range + a view style. 
+  constructor(viewStyle, startTimestamp = 0, endTimestamp = 1) {
     this.viewStyle = viewStyle;
     this.startTimestamp = startTimestamp;
     this.endTimestamp = endTimestamp;
   }
 
-
-  snapToNearest(adjusted) { 
-    switch (this.viewStyle.periodName.toLowerCase()) {
-      case 'hour':
-        // Set minutes, seconds, and milliseconds to 0 to get the start of the current hour
-        adjusted.setMinutes(0, 0, 0);
-        break;
-      case 'day':
-        // Set hours, minutes, seconds, and milliseconds to 0 to get the start of the current day
-        adjusted.setHours(0, 0, 0, 0);
-        break;
-      case 'week':
-        adjusted.setHours(0, 0, 0, 0);
-        break;
-      default:
-        throw new Error("Invalid period. Use 'hour', 'day', or 'week'.");
-    }
+  snapToNearest(adjusted) {
+    this.viewStyle.snapToNearest(adjusted);
   }
 
   static atNow(style) {
-    const nowStamp = Math.floor(new Date().getTime()/1000);
+    // Return a view that ends at the current time, using a particular style.
+    const nowStamp = Math.floor(Date.now() / 1000);
     const view = new View(style);
-
-    const adjusted = new Date((nowStamp - style.period)*1000);
+    const adjusted = new Date((nowStamp - style.period) * 1000);
     view.snapToNearest(adjusted);
-    const adjustedStamp = Math.floor(adjusted.getTime()/1000);
+    const adjustedStamp = Math.floor(adjusted.getTime() / 1000);
 
-    // Return the timestamp in seconds
-    view.startTimestamp = Math.floor(adjustedStamp);
-    view.endTimestamp = Math.floor(adjustedStamp+ 2 * style.period);
-    //view.endTimestamp = Math.floor(nowStamp);
-    console.log("atNow: view: " +view.viewStyle.periodName + " end-start = " + (view.endTimestamp - view.startTimestamp));
-    console.log("atNow: startTS: ", view.startTimestamp*1000);
-    console.log("atNow: start: ", new Date(view.startTimestamp*1000));
-    console.log("atNow: endTS: ", view.endTimestamp*1000);
-    console.log("atNow: end: ", new Date(view.endTimestamp*1000));
+    view.startTimestamp = adjustedStamp;
+    view.endTimestamp = adjustedStamp + 2 * style.period;
+
+    console.log(
+      `atNow: ${view.viewStyle.periodName} end-start = ${view.endTimestamp - view.startTimestamp}`
+    );
+    console.log("atNow: startTS:", view.startTimestamp * 1000);
+    console.log("atNow: start:", new Date(view.startTimestamp * 1000));
+    console.log("atNow: endTS:", view.endTimestamp * 1000);
+    console.log("atNow: end:", new Date(view.endTimestamp * 1000));
+
     return view;
   }
 
   getBucketCount() {
-     // The bucket count is based on how many movePeriods fit into the start/end range
-     const gap = this.endTimestamp - this.startTimestamp;
-     const buckets=Math.max(1,Math.floor(gap/this.viewStyle.movePeriod)); 
-     console.log("getBucketCount: " +  this.viewStyle.periodName + " with gap " + gap + " buckets=" + buckets);
-     return buckets;
-  };
+    const gap = this.endTimestamp - this.startTimestamp;
+    const buckets = Math.max(1, Math.floor(gap / this.viewStyle.movePeriod));
+    console.log(
+      `getBucketCount: ${this.viewStyle.periodName} with gap ${gap} buckets=${buckets}`
+    );
+    return buckets;
+  }
 
-  static moveBackwards(previous, fast=false) {
-    //console.log("View.moveBackwards: "+previous.viewStyle.periodName);
+  static moveBackwards(previous, fast = false) {
     const nextView = new View(previous.viewStyle);
-
-
     const amount = fast ? previous.viewStyle.fastMovePeriod : previous.viewStyle.movePeriod;
     nextView.endTimestamp = Math.max(previous.endTimestamp - amount, 0);
     nextView.startTimestamp = Math.max(previous.startTimestamp - amount, 0);
-    //console.log("backwards: "+nextView.viewStyle.periodName);
     return nextView;
-  };
+  }
 
-  static moveForwards(previous, fast=false) {
+  static moveForwards(previous, fast = false) {
     const nextView = new View(previous.viewStyle);
-    const nowStamp = Math.floor(Date.now() / 1000.0);
+    const nowStamp = Math.floor(Date.now() / 1000);
     const amount = fast ? previous.viewStyle.fastMovePeriod : previous.viewStyle.movePeriod;
-
-    // Dont move into the future.
-    //console.log("MoveForwards: nowStamp=" + nowStamp);
     const nextEndTimestamp = Math.min(previous.endTimestamp + amount, nowStamp);
-    const movement = nextEndTimestamp - previous.endTimestamp
+    const movement = nextEndTimestamp - previous.endTimestamp;
 
     nextView.endTimestamp = nextEndTimestamp;
     nextView.startTimestamp = previous.startTimestamp + movement;
-    //console.log("MoveForwards: " + nextView.viewStyle.periodName +" "+nextView.startTimestamp);
-    // A shallow copy to ensure react sees a change.
     return nextView;
-  };
-
+  }
 }
+
+// Snap functions for each view style
+const hourSnapFunction = (adjusted) => {
+  adjusted.setMinutes(0, 0, 0);
+};
+
+const daySnapFunction = (adjusted) => {
+  adjusted.setHours(0, 0, 0, 0);
+};
+
+const weekSnapFunction = (adjusted) => {
+  adjusted.setHours(0, 0, 0, 0);
+  // Optional: Snap to the start of the week (Monday)
+  // const day = adjusted.getDay();
+  // adjusted.setDate(adjusted.getDate() - day + (day === 0 ? -6 : 1));
+};
 
 const hourView = new ViewStyle(
   "hour",
-  3600, // 1 hour in seconds
-  3600/4, // 15 minutes in seconds
-  3600, // 1 hour in seconds
-  (ts) => moment(ts * 1000).format("mm"), // Show minutes
-  (ts) => moment(ts * 1000).format("HH:mm"), // Show minutes
-  "avg,min,max" // Only average for hour view
+  3600,
+  3600 / 4,
+  3600,
+  (ts) => moment(ts * 1000).format("mm"),
+  (ts) => moment(ts * 1000).format("HH:mm"),
+  "avg,min,max",
+  hourSnapFunction
 );
 
 const dayView = new ViewStyle(
   "day",
-  86400, // 1 day in seconds
-  3600,  // 1 hour in seconds
-  86400/2, // 1/2 day in seconds
-  (ts) => moment(ts * 1000).format("HH:mm"), // Show hours and minutes
-  (ts) => moment(ts * 1000).format("HH:mm Do"), // Show day and hour at the edges of the axis
-  "min,max,avg" // Min, max and average for day view
+  86400,
+  3600,
+  86400 / 2,
+  (ts) => moment(ts * 1000).format("HH:mm"),
+  (ts) => moment(ts * 1000).format("HH:mm Do"),
+  "min,max,avg",
+  daySnapFunction
 );
 
 const weekView = new ViewStyle(
   "week",
-  604800, // 1 week in seconds
-  86400, // 1 day in seconds
-  604800, // 1 week in seconds
-  (ts) => moment(ts * 1000).format("Do MMM"), // Show Month and day at the left and right edges
-  (ts) => moment(ts * 1000).format("Do MMM"), // Show Month and day at the left and right edges
-  "min,max,avg" // Min, max and average for week view
+  604800,
+  86400,
+  604800,
+  (ts) => moment(ts * 1000).format("Do MMM"),
+  (ts) => moment(ts * 1000).format("Do MMM"),
+  "min,max,avg",
+  weekSnapFunction
 );
+
 const initialView = View.atNow(hourView);
 
 function App() {
-
- const [currentView, setCurrentView] = useState(initialView);
+  const [currentView, setCurrentView] = useState(initialView);
   const [data, setData] = useState([]);
   const [sensors, setSensors] = useState([]);
   const [selectedSensor, setSelectedSensor] = useState(null);
 
-  let CustomizedAxisTick = ({ x, y, payload, index, data }) => {
+  const CustomizedAxisTick = ({ x, y, payload, index, data }) => {
     let tick = "";
     if (index === 0 || index === data.length - 2) {
       tick = currentView.viewStyle.edgeFormatter(payload.value);
@@ -173,39 +182,22 @@ function App() {
     }
     return (
       <g transform={`translate(${x},${y})`}>
-        <text
-          x={0}
-          y={0}
-          dy={8}
-          textAnchor="end"
-          fill="#666"
-          transform="rotate(-35)"
-        >
+        <text x={0} y={0} dy={8} textAnchor="end" fill="#666" transform="rotate(-35)">
           {tick}
         </text>
       </g>
     );
   };
 
-  let CustomTooltip = ({ active, payload, label }) => {
+  const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
-      // Format Unix timestamp to a readable date
       const date = new Date(payload[0].payload.timestamp * 1000);
       const formattedDate = moment(date).format("HH:mm   DD/MM/YYYY");
-
       return (
-        <div
-          className="custom-tooltip"
-          style={{
-            background: "#fff",
-            padding: "10px",
-            border: "1px solid #ccc",
-          }}
-        >
+        <div className="custom-tooltip" style={{ background: "#fff", padding: "10px", border: "1px solid #ccc" }}>
           <p>{formattedDate}</p>
           {payload.map((item) => (
-            <p 
-            key={item.name}>
+            <p key={item.name}>
               {item.name}: {item.value.toFixed(2)} {item.unit}
             </p>
           ))}
@@ -216,7 +208,6 @@ function App() {
   };
 
   useEffect(() => {
-    // First fetch to get available sensors
     fetch(`${API_URL}/sensors`, { mode: "cors" })
       .then((response) => response.json())
       .then((jsonData) => {
@@ -230,79 +221,41 @@ function App() {
 
   useEffect(() => {
     if (!selectedSensor) return;
-    //console.log("fetching view: " + currentView.viewStyle.periodName);
-    //console.log("view keys: " + Object.keys(currentView));
-    //console.log("view methods:" + Object.getOwnPropertyNames(currentView));
-    //console.log("Buckets: " + currentView.getBucketCount())
-    //console.log("endTimestamp: " + currentView.endTimestamp);
-    //console.log("startTimestamp: " + currentView.startTimestamp);
     const period = currentView.endTimestamp - currentView.startTimestamp;
     fetch(
-`${API_URL}/sample?sensors=${selectedSensor}&start_timestamp=${currentView.startTimestamp}&period=${period}&units=C&sample_buckets=${currentView.getBucketCount()}&sample_methods=${currentView.viewStyle.sampleMethods}&limit=3000`,
+      `${API_URL}/sample?sensors=${selectedSensor}&start_timestamp=${currentView.startTimestamp}&period=${period}&units=C&sample_buckets=${currentView.getBucketCount()}&sample_methods=${currentView.viewStyle.sampleMethods}&limit=3000`,
       { mode: "cors" }
     )
       .then((response) => response.json())
-      .then((sensor_data) =>  {
-        console.log("SENSOR_DATA: " + sensor_data)
-        let downsampled_data = sensor_data.downsampled_data
-     //   for (var i = 0; i < downsampled_data.length; i++) {
-     //       const ts = downsampled_data[i].timestamp
-     //       const sd = new Date(ts*1000);
-     //       console.log("DOWNSAMPLED_DATA["+i+"]: " + sd + " " + ts);
-     //   }
-        setData(downsampled_data);
+      .then((sensor_data) => {
+        setData(sensor_data.downsampled_data);
       })
       .catch((error) => console.error("Error fetching data:", error));
   }, [currentView, selectedSensor]);
 
-  const moveBackwards = () => {
-    const newView = View.moveBackwards(currentView);
-    setCurrentView(newView);
-  };
-
-  const moveForwards = () => {
-    const newView = View.moveForwards(currentView);
-    setCurrentView(newView);
-  };
-
-  const moveFastBackwards = () => {
-    const newView = View.moveBackwards(currentView, true);
-    setCurrentView(newView);
-  };
-
-  const moveFastForwards = () => {
-    // console.log("moveFastForwards: "+currentView.viewStyle.periodName);
-    const newView = View.moveForwards(currentView, true);
-    setCurrentView(newView);
-  };
-
-  const setToNow = () => { 
-      console.log("Setting to now for "+currentView.viewStyle.periodName);
-      const nextView = View.atNow(currentView.viewStyle);
-      setCurrentView(nextView);
-  };
+  const moveBackwards = () => setCurrentView(View.moveBackwards(currentView));
+  const moveForwards = () => setCurrentView(View.moveForwards(currentView));
+  const moveFastBackwards = () => setCurrentView(View.moveBackwards(currentView, true));
+  const moveFastForwards = () => setCurrentView(View.moveForwards(currentView, true));
+  const setToNow = () => setCurrentView(View.atNow(currentView.viewStyle));
 
   const setViewStyle = (style) => {
     const newView = new View(style);
     Object.assign(newView, currentView);
-    newView.viewStyle =	style;
-    const nowStamp = new Date().getTime()/1000;
+    newView.viewStyle = style;
+    const nowStamp = Date.now() / 1000;
     const gap = nowStamp - newView.startTimestamp;
-    console.log("Selecting view: "+ newView.viewStyle.periodName + " gap: " + gap + " period: " +newView.viewStyle.period);
 
     if (nowStamp - newView.startTimestamp < newView.viewStyle.period) {
-      const nowView = View.atNow(newView.viewStyle);
-      setCurrentView(nowView);
+      setCurrentView(View.atNow(newView.viewStyle));
     } else {
       setCurrentView(newView);
     }
-  }
- 
+  };
 
   return (
     <div style={{ width: "95%", height: 600 }}>
       <h1>Greenhouse Monitoring</h1>
-
       <div style={{ marginBottom: "16px" }}>
         <button onClick={moveFastBackwards}>FastBack</button>
         <button onClick={moveBackwards}>Back</button>
@@ -310,35 +263,20 @@ function App() {
         <button onClick={moveFastForwards}>Fast Forward</button>
         <button onClick={setToNow}>Now</button>
       </div>
-
       <div style={{ marginBottom: "16px" }}>
-        <button
-          onClick={() => setViewStyle(hourView)}
-          style={{ fontWeight: currentView.viewStyle === hourView ? "bold" : "normal" }}
-        >
+        <button onClick={() => setViewStyle(hourView)} style={{ fontWeight: currentView.viewStyle === hourView ? "bold" : "normal" }}>
           Hour
         </button>
-        <button
-          onClick={() => setViewStyle(dayView)}
-          style={{ fontWeight: currentView.viewStyle === dayView ? "bold" : "normal" }}
-        >
+        <button onClick={() => setViewStyle(dayView)} style={{ fontWeight: currentView.viewStyle === dayView ? "bold" : "normal" }}>
           Day
         </button>
-        <button
-          onClick={() => setViewStyle(weekView)}
-          style={{ fontWeight: currentView.viewStyle === weekView ? "bold" : "normal" }}
-        >
+        <button onClick={() => setViewStyle(weekView)} style={{ fontWeight: currentView.viewStyle === weekView ? "bold" : "normal" }}>
           Week
         </button>
       </div>
-
       <div style={{ marginBottom: "16px" }}>
         <label>Select Sensor: </label>
-        <select
-          value={selectedSensor || ''}
-          onChange={(e) => setSelectedSensor(e.target.value)}
-          style={{ marginLeft: "10px" }}
-        >
+        <select value={selectedSensor || ""} onChange={(e) => setSelectedSensor(e.target.value)} style={{ marginLeft: "10px" }}>
           {sensors.map((sensor) => (
             <option key={sensor} value={sensor}>
               {sensor}
@@ -346,33 +284,22 @@ function App() {
           ))}
         </select>
       </div>
-
       <ResponsiveContainer>
-        <LineChart
-          responsive
-          data={data}
-          margin={{ top: 5, right: 30, left: 20, bottom: 60 }}
-        >
+        <LineChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 60 }}>
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis
             dataKey="timestamp"
-            domain={[
-              currentView.startTimestamp,
-              currentView.endTimestamp
-            ]}
+            domain={[currentView.startTimestamp, currentView.endTimestamp]}
             tick={<CustomizedAxisTick data={data} />}
             tickFormatter={currentView.viewStyle.tickFormatter}
           />
           <YAxis />
           <Tooltip content={<CustomTooltip />} />
           <Legend verticalAlign="top" height={64} />
-
-          {/* Dynamically create lines for each value */}
-          {data.length > 0 && (
-            <>
-              {Object.keys(data[0])
-                .filter(key => key !== "timestamp")
-                .map(dataseries => (
+          {data.length > 0 &&
+            Object.keys(data[0])
+              .filter((key) => key !== "timestamp")
+              .map((dataseries) => (
                 <Line
                   key={dataseries}
                   type="monotone"
@@ -382,52 +309,34 @@ function App() {
                   activeDot={{ r: 8 }}
                 />
               ))}
-            </>
-          )}
         </LineChart>
       </ResponsiveContainer>
-
-      <span style={{ margin: "10px 15px" }}>
-        View starts at: {new Date(currentView.startTimestamp * 1000).toLocaleString()}
-      </span>
-      <span style={{ margin: "10px 15px" }}>
-        Now: {moment(Date.now()).toLocaleString()}
-      </span>
-      <span style={{ margin: "10px 15px" }}>
-        Selected sensor: {selectedSensor}
-      </span>
+      <span style={{ margin: "10px 15px" }}>View starts at: {new Date(currentView.startTimestamp * 1000).toLocaleString()}</span>
+      <span style={{ margin: "10px 15px" }}>Now: {moment(Date.now()).toLocaleString()}</span>
+      <span style={{ margin: "10px 15px" }}>Selected sensor: {selectedSensor}</span>
     </div>
   );
 }
 
 function prettyDataSeriesName(series) {
-  const [sensor,unit,method] = series.split("_")
-
+  const [sensor, unit, method] = series.split("_");
   const measurements = {
-    C: 'temperature, C',
-    kPa: 'pressure, kPa',
-    lux: 'light, lux',
-    presence: "human presence"
+    C: "temperature, C",
+    kPa: "pressure, kPa",
+    lux: "light, lux",
+    presence: "human presence",
   };
-
-  const m = measurements[unit] || '?';
-  
-  return method + " " + m + " node: " + sensor  
+  return `${method} ${measurements[unit] || "?"} node: ${sensor}`;
 }
 
-// Helper function to assign colors to different sample methods
 function getColorForSeries(series) {
-  const [sensor,_,method] = series.split("_")
+  const [, , method] = series.split("_");
   const colors = {
-    avg: '#8884d8',
-    min: '#ff0000',
-    max: '#11aa11'
+    avg: "#8884d8",
+    min: "#ff0000",
+    max: "#11aa11",
   };
-  
-  let col = colors[method] || '#8884d8';
-
-  console.debug("COLOUR for "+method+" from "+sensor+" is "+col)
-  return col
+  return colors[method] || "#8884d8";
 }
 
 export default App;
