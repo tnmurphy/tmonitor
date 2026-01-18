@@ -20,14 +20,16 @@ from enum import Enum
 
 allowed_units = set(["C", "%", "lux", "kPa", "bool"])
 
+
 class SampleMethod:
     pass
 
 
 class Sampler:
     """Abstract base class for samplers which have values added to them and return some sort
-       of summary of those values such as an average or maximum.
+    of summary of those values such as an average or maximum.
     """
+
     registry = {}
 
     def __init__(self):
@@ -45,7 +47,8 @@ class Sampler:
 
 
 class Average(Sampler):
-    """ Keep a total and count of all values added and return the average when sampled """
+    """Keep a total and count of all values added and return the average when sampled"""
+
     method_name = "AVG"
     method_value = "avg"
 
@@ -67,7 +70,8 @@ Sampler.registry[Average.method_value] = Average
 
 
 class Minimum(Sampler):
-    """Retain the smallest value added and return that as the sample """
+    """Retain the smallest value added and return that as the sample"""
+
     method_name = "MIN_"
     method_value = "min"
 
@@ -86,7 +90,8 @@ Sampler.registry[Minimum.method_value] = Minimum
 
 
 class Maximum(Sampler):
-    """Retain the largest value added and return that as the sample """
+    """Retain the largest value added and return that as the sample"""
+
     method_name = "MAX_"
     method_value = "max"
 
@@ -100,10 +105,13 @@ class Maximum(Sampler):
     def sample(self) -> float:
         return self.maximum
 
+
 Sampler.registry[Maximum.method_value] = Maximum
 
+
 class Raw(Sampler):
-    """ Just pick the first data item seen"""
+    """Just pick the first data item seen"""
+
     method_name = "RAW"
     method_value = "raw"
 
@@ -121,15 +129,17 @@ class Raw(Sampler):
 Sampler.registry[Raw.method_value] = Raw
 
 # Build up the enum from the classes that were declared
-samps = [(v.method_name,k) for k,v in Sampler.registry.items()]
-SampleMethod = Enum('SampleMethod', samps)
+samps = [(v.method_name, k) for k, v in Sampler.registry.items()]
+SampleMethod = Enum("SampleMethod", samps)
+
+
 def sample_method_from_str(s: str) -> set[SampleMethod]:
     strmethods = [u.strip() for u in s.split(",")]
-    methods = { SampleMethod(m) for m in strmethods }
+    methods = {SampleMethod(m) for m in strmethods}
     return methods
 
-SampleMethod.from_str = sample_method_from_str
 
+SampleMethod.from_str = sample_method_from_str
 
 
 class SensorReadingPayload(BaseModel):
@@ -144,7 +154,7 @@ class SensorReadingPayload(BaseModel):
     value: float
     recorded_timestamp: int
 
-    @field_validator('unit')
+    @field_validator("unit")
     @classmethod
     def unit_must_be_in_allowed(cls, u: str):
         if not u in allowed_units:
@@ -278,7 +288,8 @@ class SampleBucket:
 
 
 class BucketChain:
-    """ A string of buckets that are adjacent in time from first to next """
+    """A string of buckets that are adjacent in time from first to next"""
+
     def __init__(
         self,
         start_timestamp: int,
@@ -311,7 +322,12 @@ class BucketChain:
 
     @classmethod
     def downsample(
-        cls, data: list[SensorReading], bucket_count: int, sample_methods: set[SampleMethod]
+        cls,
+        data: list[SensorReading],
+        bucket_count: int,
+        sample_methods: set[SampleMethod],
+        start_timestamp: int,
+        end_timestamp: int,
     ) -> list[dict[str, float]]:
         """
         Creates a number of buckets which cover the time period of
@@ -340,14 +356,6 @@ class BucketChain:
 
         """
         if len(data) < 1:
-            return []
-
-        try:
-            start_timestamp = data[0].recorded_timestamp
-            # +1 ensures we have a range that's >0 and the 
-            # last item will awlays be put in the last bucket
-            end_timestamp = data[-1].recorded_timestamp+1
-        except IndexError:
             return []
 
         bucket_chain = cls(
@@ -395,7 +403,11 @@ class SensorSummary(BaseModel):
 
         summary = cls(
             downsampled_data=BucketChain.downsample(
-                alldata, sample_buckets, sample_methods
+                alldata,
+                sample_buckets,
+                sample_methods,
+                start_timestamp,
+                start_timestamp + period,
             )
         )
         return summary

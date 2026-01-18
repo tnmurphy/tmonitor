@@ -2,6 +2,7 @@
 Tests for the sensor_reading module
 
 """
+
 from fastapi import Request, HTTPException
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
@@ -36,6 +37,7 @@ TEST_VALUE = 25.5
 TEST_TIMESTAMP = int(time.time())
 TEST_RECEIVED_TIMESTAMP = int(time.time())
 
+
 @pytest.fixture
 def database_engine_test():
     engine = create_engine("sqlite:///:memory:")
@@ -43,9 +45,10 @@ def database_engine_test():
     SQLModel.metadata.create_all(engine)
     return engine
 
+
 @pytest.fixture
 def ten_readings(database_engine_test):
-    """ create ten readings from the same sensor  with the same units """
+    """create ten readings from the same sensor  with the same units"""
     with Session(database_engine_test) as write_session:
         start_timestamp = int(time.time())
         timestamp = start_timestamp
@@ -132,9 +135,12 @@ class TestSensorReading:
 
         with Session(engine) as read_session:
             fetched_readings = SensorReading.fetch(
-                session=read_session, start_timestamp=timestamp, 
-                period=1000, units={TEST_UNIT}, sensors={TEST_SENSOR},
-                limit=10
+                session=read_session,
+                start_timestamp=timestamp,
+                period=1000,
+                units={TEST_UNIT},
+                sensors={TEST_SENSOR},
+                limit=10,
             )
             values = [r.value for r in fetched_readings]
             assert len(values) == 10
@@ -142,7 +148,9 @@ class TestSensorReading:
             missfirst = SensorReading.fetch(
                 session=read_session,
                 start_timestamp=timestamp + 5,
-                period=1000, units={TEST_UNIT}, sensors={TEST_SENSOR},
+                period=1000,
+                units={TEST_UNIT},
+                sensors={TEST_SENSOR},
                 limit=10,
             )
             print(missfirst)
@@ -189,9 +197,7 @@ def test_sample_bucket_initialization():
 
 def test_add_out_of_range_reading():
     """Test that adding a reading with timestamp before bucket timestamp raises ValueError"""
-    bucket = SampleBucket(
-        timestamp=1000, methods={SampleMethod.AVG}
-    )
+    bucket = SampleBucket(timestamp=1000, methods={SampleMethod.AVG})
 
     reading = SensorReading(
         sensor=TEST_SENSOR,
@@ -211,12 +217,12 @@ def test_sample_bucket_samples(sample_bucket):
 
     assert int(timestamp) > 0
 
-    avg_key= TEST_SENSOR+"_"+TEST_UNIT+"_"+SampleMethod.AVG.value
+    avg_key = TEST_SENSOR + "_" + TEST_UNIT + "_" + SampleMethod.AVG.value
 
     assert avg_key in samples
-    min_key = TEST_SENSOR+"_"+TEST_UNIT+"_"+ SampleMethod.MIN_.value
+    min_key = TEST_SENSOR + "_" + TEST_UNIT + "_" + SampleMethod.MIN_.value
     assert min_key in samples
-    max_key = TEST_SENSOR+"_"+TEST_UNIT+"_"+ SampleMethod.MAX_.value
+    max_key = TEST_SENSOR + "_" + TEST_UNIT + "_" + SampleMethod.MAX_.value
     assert max_key in samples
 
     # Check average calculation
@@ -280,21 +286,25 @@ def test_downsample_method():
     ]
 
     result = BucketChain.downsample(
-        data=readings, sample_methods=SampleMethod.from_str("avg,min,max"), bucket_count=2
+        data=readings,
+        sample_methods=SampleMethod.from_str("avg,min,max"),
+        bucket_count=2,
+        start_timestamp=1000 - 1,
+        end_timestamp=1006 + 1,
     )
 
     assert len(result) == 2
 
     # First bucket (timestamps 1000-1003)
-    su = TEST_SENSOR+"_"+TEST_UNIT
-    assert result[0][su+"_avg"] == pytest.approx(15.0)  # (10+15+20)/4
-    assert result[0][su+"_min"] == 10.0
-    assert result[0][su+"_max"] == 20.0
+    su = TEST_SENSOR + "_" + TEST_UNIT
+    assert result[0][su + "_avg"] == pytest.approx(15.0)  # (10+15+20)/4
+    assert result[0][su + "_min"] == 10.0
+    assert result[0][su + "_max"] == 20.0
 
     # Second bucket (timestamps 1004-1005)
-    assert result[1][su+"_avg"] == pytest.approx(8.33333)  # (5+12+8)/3
-    assert result[1][su+"_min"] == 5.0
-    assert result[1][su+"_max"] == 12.0
+    assert result[1][su + "_avg"] == pytest.approx(8.33333)  # (5+12+8)/3
+    assert result[1][su + "_min"] == 5.0
+    assert result[1][su + "_max"] == 12.0
 
 
 def test_sampler_factory():
@@ -311,19 +321,21 @@ def test_sampler_factory():
 
 def test_empty_bucket_samples():
     """Test that an empty bucket returns empty samples"""
-    bucket = SampleBucket(
-        timestamp=1000, methods={SampleMethod.AVG}
-    )
+    bucket = SampleBucket(timestamp=1000, methods={SampleMethod.AVG})
 
     timestamp, samples = bucket.samples()
     assert timestamp > 0
     assert len(samples) == 0
 
+
 # Edge cases
 def test_empty_data():
     empty_data = []
-    downsampled = BucketChain.downsample(empty_data, 10, [SampleMethod.AVG])
+    downsampled = BucketChain.downsample(
+        empty_data, 10, [SampleMethod.AVG], start_timestamp=-1, end_timestamp=-1
+    )
     assert downsampled == []
+
 
 def test_single_data_point():
     single_data = [
@@ -336,11 +348,18 @@ def test_single_data_point():
             )
         )
     ]
-    print(f"{single_data[0].unit=}  {single_data[0].sensor=}") 
-    downsampled = BucketChain.downsample(single_data, 10, [SampleMethod.AVG])
+    print(f"{single_data[0].unit=}  {single_data[0].sensor=}")
+    downsampled = BucketChain.downsample(
+        single_data,
+        10,
+        [SampleMethod.AVG],
+        start_timestamp=TEST_TIMESTAMP,
+        end_timestamp=TEST_TIMESTAMP + 1,
+    )
     assert len(downsampled) == 1
-    sus  = TEST_SENSOR+"_"+TEST_UNIT+"_avg"
+    sus = TEST_SENSOR + "_" + TEST_UNIT + "_avg"
     assert sus in downsampled[0]
+
 
 def test_invalid_units():
     with pytest.raises(ValueError):
